@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.13"]
+
+    services:
+      postgres:
+        image: paradedb/paradedb:pg16
+        env:
+          POSTGRES_USER: memtide
+          POSTGRES_PASSWORD: memtide
+          POSTGRES_DB: memtide
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U memtide"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+          --shm-size 512mb
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6333:6333
+
+    env:
+      MEMTIDE_TEST_PG_DSN: postgresql://memtide:memtide@localhost:5432/memtide
+      MEMTIDE_TEST_QDRANT_URL: http://localhost:6333
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Wait for services
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:6333/readyz && \
+            pg_isready -h localhost -U memtide && break
+            sleep 2
+          done
+          curl -sf http://localhost:6333/readyz
+          pg_isready -h localhost -U memtide
+
+      - name: Install
+        run: pip install . coverage
+
+      - name: Hermetic tests (PG + Qdrant + local OpenAI-protocol server)
+        run: |
+          coverage run -m unittest tests.test_memtide 2>&1 | tail -3
+          coverage report --include="memtide/*" || true

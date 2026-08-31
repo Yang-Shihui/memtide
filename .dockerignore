@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.pyc
+*.db
+tests/
+examples/
+docs/
+webui/node_modules/
+webui/dist/
+memtide/static/
+.git/
+.claude/

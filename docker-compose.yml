@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: paradedb/paradedb:pg16
+    command: ["postgres", "-c", "shared_preload_libraries=pg_search"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-memtide}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-memtide}
+      POSTGRES_DB: ${POSTGRES_DB:-memtide}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-memtide}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrantdata:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  memtide:
+    build: .
+    ports:
+      - "${MEMTIDE_PORT:-8300}:8300"
+    volumes:
+      - mndata:/data
+    environment:
+      MEMTIDE_STORAGE: postgres
+      MEMTIDE_PG_DSN: postgresql://${POSTGRES_USER:-memtide}:${POSTGRES_PASSWORD:-memtide}@postgres:5432/${POSTGRES_DB:-memtide}
+      MEMTIDE_VECTOR_BACKEND: qdrant
+      MEMTIDE_QDRANT_URL: http://qdrant:6333
+      MEMTIDE_QDRANT_COLLECTION: ${MEMTIDE_QDRANT_COLLECTION:-memtide}
+      LLM_BACKEND: ${LLM_BACKEND:-openai}
+      LLM_BASE_URL: ${LLM_BASE_URL}
+      LLM_MODEL: ${LLM_MODEL}
+      LLM_API_KEY: ${LLM_API_KEY}
+      EMBEDDING_BACKEND: ${EMBEDDING_BACKEND:-dashscope}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY}
+      MEMTIDE_MEDIA_DIR: /data/media
+      # optional operations:
+      # MEMTIDE_API_KEY: set-to-require-key-on-all-API-endpoints
+      # MEMTIDE_AUTO_REFLECT: 3600          # seconds between auto reflection runs
+      # optional: dedicated vision/STT endpoints (default: the main LLM endpoint)
+      # MEMTIDE_VISION_BASE_URL: https://dashscope.aliyuncs.com/compatible-mode/v1
+      # MEMTIDE_VISION_MODEL: qwen-vl-max
+      # MEMTIDE_VISION_API_KEY: ${DASHSCOPE_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  qdrantdata:
+  mndata:

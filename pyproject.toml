@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "memtide"
+version = "0.1.0"
+description = "Memtide — a production PostgreSQL + Qdrant agent memory engine (Mem0-style fact extraction, Letta-style core memory blocks, Zep-style temporal audit, hybrid retrieval)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["psycopg[binary]>=3.2"]
+license = { text = "MIT" }
+authors = [{ name = "ysh" }]
+keywords = ["agent", "memory", "llm", "rag", "mem0", "letta", "zep"]
+urls = { Homepage = "https://github.com/Yang-Shihui/memtide", Documentation = "https://github.com/Yang-Shihui/memtide/tree/main/docs" }
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.scripts]
+memtide = "memtide.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["memtide*"]
+
+[tool.setuptools.package-data]
+memtide = ["static/**/*"]

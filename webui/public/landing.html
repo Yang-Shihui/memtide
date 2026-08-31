@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Memtide — 轻量级 Agent 记忆引擎</title>
+<meta name="description" content="Memtide：核心零第三方 SDK、可插拔 LLM 的 agent 长期记忆引擎。原子事实、预测编码门控、混合检索、双时标审计、多模态记忆。" />
+<link rel="icon" type="image/svg+xml" href="/console/favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#F7FAF8; --panel:#FFFFFF; --panel2:#F1F5F2; --border:#E3E9E5; --border-strong:#CFD8D2;
+  --text:#1C211E; --muted:#66716B;
+  --accent:#3BAF7E; --accent-deep:#2E8C64; --accent-soft:#E9F5EE;
+  --pink-deep:#C2567E; --blueberry:#5B8FC9; --apricot-deep:#C98B4B; --lavender-deep:#8B6CC4; --raspberry:#E07F7F;
+  --mono:"JetBrains Mono","SF Mono",Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font:15px/1.7 "IBM Plex Sans","PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:0 28px}
+a{color:inherit;text-decoration:none}
+.mono{font-family:var(--mono)}
+
+/* nav */
+nav{position:sticky;top:0;z-index:20;background:rgba(247,250,248,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+nav .wrap{display:flex;align-items:center;gap:26px;height:60px}
+.brand{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-weight:700;font-size:17px}
+nav .links{display:flex;gap:22px;margin-left:auto;font-size:13.5px;color:var(--muted)}
+nav .links a:hover{color:var(--text)}
+.btn{display:inline-flex;align-items:center;gap:7px;border-radius:8px;padding:9px 18px;font-size:14px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s ease}
+.btn.primary{background:var(--accent);color:#fff}
+.btn.primary:hover{background:var(--accent-deep)}
+.btn.ghost{background:var(--panel);border-color:var(--border-strong);color:var(--text)}
+.btn.ghost:hover{border-color:var(--accent);color:var(--accent-deep)}
+.btn.sm{padding:6px 14px;font-size:13px}
+
+/* hero */
+.hero{padding:96px 0 72px;text-align:center;position:relative;overflow:hidden}
+.hero::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(720px 340px at 50% -8%,rgba(59,175,126,.10),transparent 70%)}
+.kicker{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;color:var(--accent-deep);
+  background:var(--accent-soft);border:1px solid #CBE7D8;border-radius:999px;padding:4px 14px;margin-bottom:26px}
+h1{font-family:var(--mono);font-size:clamp(30px,5vw,52px);line-height:1.18;letter-spacing:-1px;font-weight:700}
+h1 .grad{background:linear-gradient(100deg,#2E8C64,#5B8FC9 45%,#8B6CC4);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p.sub{max-width:640px;margin:22px auto 0;font-size:17px;color:var(--muted)}
+.hero .cta{display:flex;gap:12px;justify-content:center;margin-top:34px}
+
+/* code window */
+.codewin{max-width:720px;margin:46px auto 0;background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden;
+  box-shadow:0 1px 2px rgba(28,33,30,.05),0 16px 48px rgba(28,33,30,.07);text-align:left}
+.codewin .bar{display:flex;align-items:center;gap:6px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--panel2)}
+.codewin .bar i{width:10px;height:10px;border-radius:50%;background:#E3E9E5}
+.codewin .bar i:nth-child(1){background:#F6BDBD}.codewin .bar i:nth-child(2){background:#F6E3BD}.codewin .bar i:nth-child(3){background:#BDE3C6}
+.codewin .bar span{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.codewin pre{font-family:var(--mono);font-size:12.5px;line-height:1.75;padding:18px 22px;overflow-x:auto;color:#3D4642}
+.codewin .cm{color:#8CA096}.codewin .kw{color:#2E8C64}.codewin .st{color:#8B6CC4}
+
+/* sections */
+section{padding:72px 0}
+.sec-head{text-align:center;max-width:640px;margin:0 auto 44px}
+.sec-head .tag{font-family:var(--mono);font-size:12px;color:var(--accent-deep);letter-spacing:1.5px}
+.sec-head h2{font-family:var(--mono);font-size:28px;letter-spacing:-.5px;margin:10px 0 12px}
+.sec-head p{color:var(--muted)}
+
+/* features */
+.feats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.feat{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px 22px 20px;transition:border-color .15s ease}
+.feat:hover{border-color:var(--accent)}
+.feat .ic{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+.feat .ic svg{width:17px;height:17px}
+.feat h3{font-size:15px;margin-bottom:6px}
+.feat p{font-size:13px;color:var(--muted);line-height:1.75}
+.i-green{background:#DFF2E4;color:#2F6A45}.i-blue{background:#E2ECFC;color:#33598F}
+.i-amber{background:#FDEBD4;color:#8A5A1D}.i-violet{background:#EEE7FA;color:#5F4391}
+.i-rose{background:#FCE4E4;color:#9C3838}.i-cyan{background:#E0F4F1;color:#1F6E5C}
+
+/* pipeline */
+.pipe{font-family:var(--mono);font-size:12.5px;line-height:2;background:var(--panel);border:1px solid var(--border);
+  border-radius:12px;padding:26px 30px;overflow-x:auto;color:#4A5550;white-space:pre}
+.pipe b{color:var(--accent-deep);font-weight:600}
+.pipe em{color:#8B6CC4;font-style:normal}
+
+
+/* footer */
+footer{border-top:1px solid var(--border);padding:34px 0 44px;margin-top:24px}
+footer .wrap{display:flex;gap:30px;flex-wrap:wrap;align-items:center;justify-content:space-between;color:var(--muted);font-size:13px}
+footer .cols{display:flex;gap:28px;flex-wrap:wrap}
+footer a:hover{color:var(--text)}
+@media(max-width:860px){.feats{grid-template-columns:1fr}.hero{padding:64px 0 48px}nav .links{display:none}}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="/">
+      <svg viewBox="0 0 128 128" width="24" height="24" aria-hidden="true">
+        <path d="M18 102 V58 C18 38 32 30 44 42 L64 62 L84 42 C96 30 110 38 110 58 V102 H78 V72 L64 86 L50 72 V102 Z" fill="#1C211E"/>
+        <path d="M50 72 L64 86 L78 72 V102 H50 Z" fill="#3BAF7E"/>
+      </svg>
+      Memtide
+    </a>
+    <div class="links">
+      <a href="#features">特性</a>
+      <a href="#pipeline">架构</a>
+      <a href="#quickstart">快速开始</a>
+      <a href="/docs">API 文档</a>
+    </div>
+    <a class="btn primary sm" href="/console">打开控制台 →</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="kicker">v0.1.0 · MIT · 核心零 SDK 依赖</span>
+    <h1>给 Agent 一颗<br/><span class="grad">长期记忆</span></h1>
+    <p class="sub">Memtide 是一个核心零第三方 SDK 的 agent 记忆引擎——原子事实抽取、预测编码门控、
+    混合检索、双时标审计、多模态记忆，PostgreSQL + Qdrant 生产栈开箱即用。</p>
+    <div class="cta">
+      <a class="btn primary" href="/console">打开控制台</a>
+      <a class="btn ghost" href="#quickstart">查看快速开始</a>
+    </div>
+    <div class="codewin">
+      <div class="bar"><i></i><i></i><i></i><span>python — memtide quickstart</span></div>
+      <pre><span class="cm"># 任意 OpenAI 兼容端点（GLM / Qwen / OpenAI / vLLM ...）</span>
+<span class="kw">from</span> memtide <span class="kw">import</span> MemoryEngine, MemoryConfig
+
+mem = MemoryEngine(MemoryConfig(
+    pg_dsn=<span class="st">"postgresql://memtide:pw@localhost:5432/memtide"</span>,
+    llm_base_url=<span class="st">"http://your-llm-endpoint/v1"</span>, llm_model=<span class="st">"glm-5.3-flash"</span>,
+    llm_api_key=<span class="st">"sk-..."</span>, embedding_backend=<span class="st">"dashscope"</span>,
+    dashscope_api_key=<span class="st">"sk-..."</span>))
+mem.add(<span class="st">"我叫李雷，住在杭州，喜欢喝美式咖啡"</span>, user_id=<span class="st">"alice"</span>)
+mem.add(<span class="st">"我搬到上海了"</span>, user_id=<span class="st">"alice"</span>)   <span class="cm"># 旧值自动进审计日志</span>
+
+mem.search(<span class="st">"用户住哪"</span>, user_id=<span class="st">"alice"</span>)  <span class="cm"># → 混合检索，得分可解释</span></pre>
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="tag">FEATURES</div>
+      <h2>六种记忆机制，一个引擎</h2>
+      <p>融合 Mem0 / Letta / Zep / LangMem 的核心设计，外加两个原创机制（预测编码门控、多模态溯源）。</p>
+    </div>
+    <div class="feats">
+      <div class="feat"><div class="ic i-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></div>
+        <h3>原子事实 + 冲突消解</h3><p>记忆是原子事实而非聊天记录。写时 LLM 决策 ADD / UPDATE / DELETE / NOOP——"搬到上海"会替换"住在杭州"，旧值进审计而非留下矛盾。</p></div>
+      <div class="feat"><div class="ic i-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="4"/></svg></div>
+        <h3>预测编码门控</h3><p>记忆库即生成式先验：完全被预测到的事实不编码，越意外的记忆重要度越高（S = −log₂ p̂ 三分流）。记忆库越用越小、越用越准。</p></div>
+      <div class="feat"><div class="ic i-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div>
+        <h3>混合检索，得分可解释</h3><p>向量余弦 + BM25 全文 + 实体索引三路召回，RRF 融合再重排。每条命中都带 semantic / bm25 / retention 得分明细。</p></div>
+      <div class="feat"><div class="ic i-violet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div>
+        <h3>遗忘曲线 + 后台反思</h3><p>Ebbinghaus 遗忘曲线：越少访问越快淡忘，被再次查询即"复忆"。定期反思把同主题簇蒸馏成概括，抽象层比细节忘得慢。</p></div>
+      <div class="feat"><div class="ic i-rose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 7h13M8 12h13M8 17h13M3.5 7h.01M3.5 12h.01M3.5 17h.01"/></svg></div>
+        <h3>双时标审计</h3><p>失效不删除：valid_at / invalid_at 双时标 + superseded_by 取代链 + 全量事件日志（ADD→UPDATE→ACCESS），历史完全可回放。</p></div>
+      <div class="feat"><div class="ic i-cyan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M8 15h4"/></svg></div>
+        <h3>多模态记忆</h3><p>图片 / 音频 / 文件以 OpenAI content-parts 直进管线：视觉模型转文字描述走完整管线，原始字节 sha256 内容寻址存储，文字查询即可跨模态召回。</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="pipeline">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="tag">ARCHITECTURE</div>
+      <h2>写入五阶段，读取三路融合</h2>
+      <p>所有决策可观测：每次写入返回逐条门控与消解决策，每次检索返回得分成分。</p>
+    </div>
+    <div class="pipe">写入  messages ─▶ <b>多模态归一化</b> ─▶ <b>事实抽取</b> ─▶ <b>预测编码门控</b> ─▶ <b>冲突消解</b> ─▶ ADD / UPDATE / DELETE / NOOP
+                 │                                            <em>S = −log₂ p̂ 三分流</em>        旧值进审计链
+                 ▼
+          附件 sha256 内容寻址落盘 ◀────────────────────────────┘
+
+读取  query ──▶ ┌ 向量余弦(top-40) ┐
+                ├ BM25 全文       ├──▶ <b>RRF 融合</b> ─▶ + 留存度 + 重要度 ─▶ 每次命中强化记忆
+                └ 实体索引匹配     ┘
+
+存储  PostgreSQL(BM25) ＋ Qdrant ANN</div>
+  </div>
+</section>
+
+<section id="quickstart">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="tag">DEPLOY</div>
+      <h2>从 pip 安装到生产栈</h2>
+    </div>
+    <div class="codewin">
+      <div class="bar"><i></i><i></i><i></i><span>bash — docker compose</span></div>
+      <pre><span class="cm"># 生产部署：PostgreSQL 16 + Qdrant + REST + 可视化控制台</span>
+git clone https://github.com/your-org/memtide && <span class="kw">cd</span> memtide
+cp .env.example .env          <span class="cm"># 填入 LLM / embedding key</span>
+docker compose up -d --build
+
+<span class="cm"># 控制台  http://localhost:8300/console</span>
+<span class="cm"># REST    http://localhost:8300/memories  ·  /search  ·  /stats</span></pre>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="brand" style="display:flex;align-items:center;gap:9px;font-size:14px">
+      <svg viewBox="0 0 128 128" width="20" height="20" aria-hidden="true">
+        <path d="M18 102 V58 C18 38 32 30 44 42 L64 62 L84 42 C96 30 110 38 110 58 V102 H78 V72 L64 86 L50 72 V102 Z" fill="#1C211E"/>
+        <path d="M50 72 L64 86 L78 72 V102 H50 Z" fill="#3BAF7E"/>
+      </svg>
+      Memtide · MIT License
+    </div>
+    <div class="cols">
+      <a href="/console">控制台</a>
+      <a href="#features">特性</a>
+      <a href="#pipeline">架构</a>
+      <a href="/docs">API 文档</a>
+        <a href="/stats">API 状态</a>
+    </div>
+    <div class="mono">mem0 · letta · zep · langmem 的轻量替代</div>
+  </div>
+</footer>
+
+</body>
+</html>

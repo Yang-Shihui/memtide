@@ -1,0 +1,31 @@
+# ---- secrets（真实密钥，永远不入库；示例文件 .env.example 保留）----
+.env
+.env.local
+.env.*.local
+
+# ---- python ----
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# ---- 运行时数据 ----
+*.db
+memtide_media/
+data/
+
+# ---- webui 构建链 ----
+node_modules/
+webui/dist/
+# UI 构建产物由 webui 构建同步生成（Dockerfile 自动构建；目录缺失时服务退化为纯 API）
+memtide/static/
+
+# ---- 工具与编辑器 ----
+.DS_Store
+*.log
+# 第三方 claudekit 技能包（npx ui-ux-pro-max-cli init 可重装；非项目源码）
+.claude/skills/

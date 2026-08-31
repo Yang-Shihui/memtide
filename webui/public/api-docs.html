@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Memtide REST API 文档</title>
+<meta name="description" content="Memtide REST API 交互式接口文档：全部端点、参数、示例与在线执行。" />
+<link rel="icon" type="image/svg+xml" href="/console/favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#F7FAF8; --panel:#FFFFFF; --panel2:#F1F5F2; --border:#E3E9E5; --border-strong:#CFD8D2;
+  --text:#1C211E; --muted:#66716B;
+  --accent:#3BAF7E; --accent-deep:#2E8C64; --accent-soft:#E9F5EE;
+  --get:#2E7DC4; --get-bg:#E2ECFC; --post:#C98B4B; --post-bg:#FDEBD4;
+  --put:#8B6CC4; --put-bg:#EEE7FA; --del:#CC4B4B; --del-bg:#FCE4E4;
+  --mono:"JetBrains Mono","SF Mono",Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:14px/1.7 "IBM Plex Sans","PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:980px;margin:0 auto;padding:0 26px}
+a{color:var(--accent-deep);text-decoration:none}
+
+/* nav */
+nav{position:sticky;top:0;z-index:20;background:rgba(247,250,248,.9);backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+nav .wrap{display:flex;align-items:center;gap:20px;height:56px}
+.brand{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-weight:700;font-size:15.5px}
+.brand .doc{color:var(--muted);font-weight:400}
+nav .right{margin-left:auto;display:flex;gap:16px;align-items:center;font-size:13px}
+.navlink{color:var(--muted)} .navlink:hover{color:var(--text)}
+.btn{display:inline-flex;align-items:center;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s}
+.btn.primary{background:var(--accent);color:#fff}.btn.primary:hover{background:var(--accent-deep)}
+.btn.ghost{background:var(--panel);border-color:var(--border-strong);color:var(--text)}
+.btn.ghost:hover{border-color:var(--accent);color:var(--accent-deep)}
+
+header.page{padding:42px 0 8px}
+h1{font-family:var(--mono);font-size:26px;letter-spacing:-.5px}
+header.page p{color:var(--muted);margin-top:8px;max-width:720px}
+.auth{margin-top:14px;font-size:13px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 16px;color:var(--muted)}
+.auth code{font-family:var(--mono);font-size:12px;color:var(--text)}
+
+h2.sec{font-family:var(--mono);font-size:13px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:46px 0 14px}
+
+/* endpoint card */
+.ep{background:var(--panel);border:1px solid var(--border);border-radius:12px;margin-bottom:12px;overflow:hidden}
+.ep-head{display:flex;align-items:center;gap:12px;padding:13px 18px;cursor:pointer;user-select:none}
+.ep-head:hover{background:var(--panel2)}
+.m{font-family:var(--mono);font-size:11.5px;font-weight:700;border-radius:6px;padding:3px 9px;letter-spacing:.5px;flex:none}
+.m.GET{background:var(--get-bg);color:var(--get)}
+.m.POST{background:var(--post-bg);color:var(--post)}
+.m.PUT{background:var(--put-bg);color:var(--put)}
+.m.DELETE{background:var(--del-bg);color:var(--del)}
+.ep-path{font-family:var(--mono);font-size:13.5px;font-weight:600}
+.ep-name{color:var(--muted);font-size:12.5px;margin-left:auto}
+.ep-body{display:none;border-top:1px solid var(--border);padding:16px 18px}
+.ep.open .ep-body{display:block}
+.ep-desc{font-size:13px;color:var(--muted);margin-bottom:12px}
+.params{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:12px}
+.params th{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:left;padding:4px 10px 4px 0;font-weight:600}
+.params td{padding:4px 10px 4px 0;border-top:1px dashed var(--border);vertical-align:top}
+.params code{font-family:var(--mono);font-size:12px;background:var(--panel2);padding:1px 6px;border-radius:5px}
+.req{color:var(--post);font-weight:600}
+.try textarea{width:100%;min-height:74px;font-family:var(--mono);font-size:12px;background:var(--panel2);
+  border:1px solid var(--border);border-radius:8px;padding:10px 12px;resize:vertical;color:var(--text);margin:8px 0}
+.try .row{display:flex;gap:10px;align-items:center}
+.try pre{font-family:var(--mono);font-size:12px;background:#1C211E;color:#D5E3DC;border-radius:8px;padding:12px 14px;
+  margin-top:10px;overflow:auto;max-height:320px;white-space:pre-wrap;word-break:break-all;display:none}
+.try pre.show{display:block}
+.hint{font-size:12px;color:var(--muted)}
+
+footer{border-top:1px solid var(--border);margin-top:56px;padding:26px 0 44px}
+footer .wrap{display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between;color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="/">
+      <svg viewBox="0 0 128 128" width="24" height="24" aria-hidden="true">
+        <path d="M18 102 V58 C18 38 32 30 44 42 L64 62 L84 42 C96 30 110 38 110 58 V102 H78 V72 L64 86 L50 72 V102 Z" fill="#1C211E"/>
+        <path d="M50 72 L64 86 L78 72 V102 H50 Z" fill="#3BAF7E"/>
+      </svg>
+      Memtide <span class="doc">/ API 文档</span>
+    </a>
+    <div class="right">
+      <a class="navlink" href="/">官网</a>
+      <a class="navlink" href="/console">控制台</a>
+      <a class="btn ghost sm" href="/stats">GET /stats</a>
+    </div>
+  </div>
+</nav>
+
+<header class="page">
+  <div class="wrap">
+    <h1>REST API</h1>
+    <p>Memtide 服务启动即提供全部 REST 接口（Docker 栈默认 <code class="mono">:8300</code>，
+    本地 <code class="mono">python -m memtide serve</code>（读 MEMTIDE_PG_DSN））。所有请求/响应均为 JSON。
+    每个端点卡片可直接展开并<b>在线执行</b>，查看真实响应。</p>
+    <div class="auth">
+      鉴权：设置环境变量 <code>MEMTIDE_API_KEY</code> 后，所有端点需要请求头
+      <code>X-API-Key: &lt;key&gt;</code> 或 <code>Authorization: Bearer &lt;key&gt;</code>；
+      未设置时完全开放。本页执行时会自动携带浏览器里保存的 key。
+    </div>
+  </div>
+</header>
+
+<div class="wrap" id="endpoints">
+
+  <h2 class="sec">写入 / 记忆 CRUD</h2>
+
+  <div class="ep open">
+    <div class="ep-head"><span class="m POST">POST</span><span class="ep-path">/memories</span><span class="ep-name">写入记忆（对话 → 原子事实 → 门控 → 冲突消解）</span></div>
+    <div class="ep-body">
+      <div class="ep-desc">text 与 messages 二选一；支持 OpenAI content-parts（图片等）、调用方时间戳。</div>
+      <table class="params"><tr><th>参数</th><th>说明</th></tr>
+        <tr><td><code>text</code> | <code>messages</code></td><td><span class="req">必填二选一</span>；messages 为 [{'role','content'}]，content 支持 parts（image_url / input_audio / file，可带 caption）</td></tr>
+        <tr><td><code>user_id</code> / <code>agent_id</code> / <code>run_id</code></td><td>作用域隔离</td></tr>
+        <tr><td><code>timestamp</code></td><td>ISO-8601，数据自身时间（导入历史对话），影响 created_at/valid_at/遗忘曲线</td></tr>
+        <tr><td><code>infer</code></td><td>默认 true；false = 原文直存</td></tr>
+        <tr><td><code>metadata</code></td><td>附加到本批事实的对象</td></tr>
+      </table>
+      <div class="try" data-method="POST" data-path="/memories"
+           data-body='{"text": "我叫李雷，住在杭州，喜欢喝美式咖啡", "user_id": "docs"}'>
+        <div class="row"><button class="btn primary sm">执行</button><span class="hint">返回 added/updated/noop/rejected/gate 决策明细</span></div>
+        <textarea spellcheck="false"></textarea><pre></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep">
+    <div class="ep-head"><span class="m GET">GET</span><span class="ep-path">/memories</span><span class="ep-name">列出记忆</span></div>
+    <div class="ep-body">
+      <table class="params"><tr><th>Query</th><th>说明</th></tr>
+        <tr><td><code>user_id / agent_id / run_id</code></td><td>作用域过滤</td></tr>
+        <tr><td><code>limit</code></td><td>默认 100</td></tr>
+        <tr><td><code>include_invalid</code></td><td>true 时包含失效/被取代记忆</td></tr>
+      </table>
+      <div class="try" data-method="GET" data-path="/memories?user_id=demo&limit=5">
+        <div class="row"><button class="btn primary sm">执行</button><span class="hint">含 attachments / metadata / 审计字段</span></div>
+        <pre></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep">
+    <div class="ep-head"><span class="m GET">GET</span><span class="ep-path">/memories/{id}</span><span class="ep-name">单条记忆</span></div>
+    <div class="ep-body">
+      <div class="ep-desc">软删除的记忆默认 404；<code>?include_invalid=true</code> 可见。</div>
+      <div class="try" data-method="GET" data-path="/memories/xxx">
+        <div class="row"><button class="btn primary sm">执行</button><span class="hint">把 {id} 换成真实记忆 id</span></div>
+        <textarea spellcheck="false" style="display:none"></textarea><pre></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep">
+    <div class="ep-head"><span class="m PUT">PUT</span><span class="ep-path">/memories/{id}</span><span class="ep-name">修正文本</span></div>
+    <div class="ep-body">
+      <div class="ep-desc">同步更新向量索引并记 UPDATE 审计事件；已失效记忆拒绝（防复活）。</div>
+      <div class="try" data-method="PUT" data-path="/memories/xxx"
+           data-body='{"text": "修正后的记忆文本"}'>
+        <div class="row"><button class="btn primary sm">执行</button><span class="hint">{"updated": true}</span></div>
+        <textarea spellcheck="false"></textarea><pre></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep">
+    <div class="ep-head"><span class="m DELETE">DELETE</span><span class="ep-path">/memories/{id}</span><span class="ep-name">删除</span></div>
+    <div class="ep-body">
+      <div class="ep-desc">默认软删除（invalid_at + 审计保留）；<code>?hard=true</code> 彻底删除。</div>
+      <div class="try" data-method="DELETE" data-path="/memories/xxx">
+        <div class="row"><button class="btn primary sm">执行</button><span class="hint">{"deleted": true}</span></div>
+        <pre></pre>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="sec">检索 / 记忆块</h2>
+
+  <div class="ep">
+    <div class="ep-head"><span class="m POST">POST</span><span class="ep-path">/search</span><span class="ep-name">混合检索（向量 + BM25 + 实体 → RRF）</span></div>
+    <div class="ep-body">
+      <table class="params"><tr><th>参数</th><th>说明</th></tr>
+        <tr><td><code>query</code></td><td><span class="req">必填</span></td></tr>
+        <tr><td><code>user_id / agent_id / run_id</code></td><td>作用域</td></tr>
+        <tr><td><code>limit</code> / <code>include_forgotten</code></td><td>默认 10 / false</td></tr>
+        <tr><td><code>memory_type</code> / <code>slot</code></td><td>融合后过滤（fact/preference/episodic/procedural；slot 如 location）</td></tr>
+      </table>
+      <div class="try" data-method="POST" data-path="/search"
+           data-body='{"query": "用户住哪", "user_id": "demo", "limit": 3}'>
+        <div class="row"><button class="btn primary sm">执行</button><span class="hint">components 含 rrf/semantic/bm25/entity/retention 得分明细</span></div>
+        <textarea spellcheck="false"></textarea><pre></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep">
+    <div class="ep-head"><span class="m GET">GET</span><span class="ep-path">/context</span><span class="ep-name">核心记忆块（注入 system prompt）</span></div>
+    <div class="ep-body">
+      <div class="ep-desc">Letta 式常驻块：重要度 × 留存度排序的事实 + 与查询最相关的记忆。</div>
+      <div class="try" data-method="GET" data-path="/context?user_id=demo&query=用户的偏好">
+        <div class="row"><button class="btn primary sm">执行</button><span class="hint">{"context": "## Memory\n..."}</span></div>
+        <pre></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep">
+    <div class="ep-head"><span class="m GET">GET</span><span class="ep-path">/history</span><span class="ep-name">审计日志</span></div>
+    <div class="ep-body">
+      <div class="ep-desc">全量事件（ADD/UPDATE/DELETE/ACCESS/CONSOLIDATE），带 prev/new 值；不带 memory_id 返回全库最近。</div>
+      <div class="try" data-method="GET" data-path="/history?limit=10">
+        <div class="row"><button class="btn primary sm">执行</button></div>
+        <pre></pre>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="sec">多模态 / 运维 / 反思</h2>
+
+  <div class="ep">
+    <div class="ep-head"><span class="m GET">GET</span><span class="ep-path">/media/{sha256}</span><span class="ep-name">取回媒体素材</span></div>
+    <div class="ep-body">
+      <div class="ep-desc">内容寻址原始文件（不可变缓存头）；sha256 来自记忆的 attachments 字段。</div>
+      <div class="try" data-method="GET" data-path="/media/xxx">
+        <div class="row"><button class="btn primary sm">执行</button><span class="hint">二进制；浏览器直接显示图片</span></div>
+        <pre></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep">
+    <div class="ep-head"><span class="m POST">POST</span><span class="ep-path">/consolidate</span><span class="ep-name">后台反思（聚类→概括→取代）</span></div>
+    <div class="ep-body">
+      <div class="ep-desc">同主题 ≥3 条记忆蒸馏成概括，成员进 superseded_by 审计链。</div>
+      <div class="try" data-method="POST" data-path="/consolidate"
+           data-body='{"user_id": "demo"}'>
+        <div class="row"><button class="btn primary sm">执行</button><span class="hint">报告 clusters / members_absorbed / summaries</span></div>
+        <textarea spellcheck="false"></textarea><pre></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep">
+    <div class="ep-head"><span class="m POST">POST</span><span class="ep-path">/compact</span><span class="ep-name">近重复压实（纯向量去重）</span></div>
+    <div class="ep-body">
+      <div class="try" data-method="POST" data-path="/compact"
+           data-body='{"user_id": "demo"}'>
+        <div class="row"><button class="btn primary sm">执行</button><span class="hint">cos≥去重阈值的簇保留最优一条</span></div>
+        <textarea spellcheck="false"></textarea><pre></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep">
+    <div class="ep-head"><span class="m GET">GET</span><span class="ep-path">/export</span><span class="ep-name">JSONL 导出</span></div>
+    <div class="ep-body">
+      <div class="ep-desc">含审计状态与 embedding（base64）；媒体文件需随 media_dir 拷贝。</div>
+      <div class="try" data-method="GET" data-path="/export?user_id=demo">
+        <div class="row"><button class="btn primary sm">执行</button></div>
+        <pre></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep">
+    <div class="ep-head"><span class="m POST">POST</span><span class="ep-path">/import</span><span class="ep-name">JSONL 导入</span></div>
+    <div class="ep-body">
+      <div class="try" data-method="POST" data-path="/import"
+           data-body='{"lines": [], "on_conflict": "skip"}'>
+        <div class="row"><button class="btn primary sm">执行</button><span class="hint">lines 为 /export 的 JSONL 对象数组；冲突策略 skip|overwrite</span></div>
+        <textarea spellcheck="false"></textarea><pre></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep">
+    <div class="ep-head"><span class="m POST">POST</span><span class="ep-path">/rebuild</span><span class="ep-name">重建向量索引</span></div>
+    <div class="ep-body">
+      <div class="ep-desc">更换 embedding 模型或向量库数据丢失后，从关系库全量回填。</div>
+      <div class="try" data-method="POST" data-path="/rebuild">
+        <div class="row"><button class="btn primary sm">执行</button><span class="hint">{"reindexed": N}</span></div>
+        <pre></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep">
+    <div class="ep-head"><span class="m POST">POST</span><span class="ep-path">/media/gc</span><span class="ep-name">孤儿媒体清理</span></div>
+    <div class="ep-body">
+      <div class="try" data-method="POST" data-path="/media/gc"
+           data-body='{"delete": false}'>
+        <div class="row"><button class="btn primary sm">执行</button><span class="hint">delete=true 才真删；默认只报告</span></div>
+        <textarea spellcheck="false"></textarea><pre></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep">
+    <div class="ep-head"><span class="m GET">GET</span><span class="ep-path">/stats</span><span class="ep-name">运行统计 + 后端信息</span></div>
+    <div class="ep-body">
+      <div class="try" data-method="GET" data-path="/stats">
+        <div class="row"><button class="btn primary sm">执行</button><span class="hint">计数 / 事件分布 / 真实模型名 / media_files</span></div>
+        <pre></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="ep">
+    <div class="ep-head"><span class="m POST">POST</span><span class="ep-path">/reset</span><span class="ep-name">清空全库（危险）</span></div>
+    <div class="ep-body">
+      <div class="ep-desc">删除所有用户的全部记忆，不可恢复。必须提交 <code>{"confirm":"RESET"}</code>，生产环境请配合 API 鉴权使用。</div>
+      <div class="try" data-method="POST" data-path="/reset"
+           data-body='{"confirm":"RESET"}'>
+        <div class="row"><button class="btn ghost sm">执行（慎用）</button></div>
+        <pre></pre>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Memtide · REST API · 全部端点也可在 <a href="/console">控制台</a> 可视化操作</span>
+    <span>错误约定：缺参/非法时间戳/超限媒体 → 400 · 未认证 → 401 · 不存在 → 404 · 内部异常 → 500 JSON</span>
+  </div>
+</footer>
+
+<script>
+// API key (set by the console) rides along automatically
+function keyHeaders() {
+  const h = { "Content-Type": "application/json" };
+  const k = localStorage.getItem("memtide-api-key");
+  if (k) h["X-API-Key"] = k;
+  return h;
+}
+document.querySelectorAll(".ep-head").forEach((head) => {
+  head.addEventListener("click", () => head.parentElement.classList.toggle("open"));
+});
+document.querySelectorAll(".try").forEach((box) => {
+  const method = box.dataset.method, path = box.dataset.path;
+  const ta = box.querySelector("textarea");
+  const pre = box.querySelector("pre");
+  const btn = box.querySelector("button");
+  if (ta && box.dataset.body) ta.value = box.dataset.body;
+  btn.addEventListener("click", async () => {
+    btn.disabled = true; btn.textContent = "执行中…";
+    const opts = { method, headers: keyHeaders() };
+    if (method !== "GET" && ta && ta.value.trim()) opts.body = ta.value;
+    try {
+      const resp = await fetch(path, opts);
+      const text = await resp.text();
+      let pretty = text;
+      try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch {}
+      pre.textContent = `HTTP ${resp.status}\n\n` + pretty;
+    } catch (e) {
+      pre.textContent = "请求失败: " + e.message;
+    }
+    pre.classList.add("show");
+    btn.disabled = false; btn.textContent = "执行";
+  });
+});
+</script>
+</body>
+</html>

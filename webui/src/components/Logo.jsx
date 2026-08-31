@@ -1,0 +1,11 @@
+// Memtide logo — wave-peak M with a tide-pocket notch (docs/assets/logo.svg inlined).
+export default function Logo({ size = 26 }) {
+  return (
+    <svg viewBox="0 0 128 128" width={size} height={size} role="img" aria-label="Memtide"
+         style={{ display: "block", flex: "none" }}>
+      <path d="M18 102 V58 C18 38 32 30 44 42 L64 62 L84 42 C96 30 110 38 110 58 V102 H78 V72 L64 86 L50 72 V102 Z"
+            fill="#1C211E" />
+      <path d="M50 72 L64 86 L78 72 V102 H50 Z" fill="#3BAF7E" />
+    </svg>
+  );
+}
