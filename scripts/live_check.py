@@ -44,7 +44,8 @@ def check(name, fn):
 # the endpoint must come from the environment — no baked-in default
 LLM_URL = os.environ.get("MEMTIDE_LLM_BASE_URL") or os.environ.get("LLM_BASE_URL") or ""
 LLM_KEY = os.environ.get("MEMTIDE_LLM_KEY") or os.environ.get("LLM_API_KEY") or ""
-LLM_MODEL = os.environ.get("MEMTIDE_LLM_MODEL", "gpt-4o-mini")
+LLM_MODEL = (os.environ.get("MEMTIDE_LLM_MODEL") or os.environ.get("LLM_MODEL")
+             or "gpt-4o-mini")
 DS_KEY = os.environ.get("MEMTIDE_DASHSCOPE_KEY") or os.environ.get("DASHSCOPE_API_KEY") or ""
 DS_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DS_MODEL = os.environ.get("MEMTIDE_DASHSCOPE_MODEL", "qwen3.7-text-embedding")
