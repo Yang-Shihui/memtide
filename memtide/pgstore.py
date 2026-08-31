@@ -93,27 +93,28 @@ class PostgresStorage(StorageBase):
     def insert(self, mem: Memory, embedding: bytes) -> None:
         import psycopg.types.json  # noqa: F401  (jsonb not used; TEXT columns)
 
-        self.conn.execute(
-            """INSERT INTO memories (id, text, memory_type, user_id, agent_id, run_id,
-                                     entities, metadata, importance, access_count,
-                                     last_accessed, created_at, updated_at, valid_at,
-                                     invalid_at, superseded_by, source, attachments, embedding)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (mem.id, mem.text, mem.memory_type, mem.user_id, mem.agent_id, mem.run_id,
-             json.dumps(mem.entities, ensure_ascii=False),
-             json.dumps(mem.metadata, ensure_ascii=False),
-             mem.importance, mem.access_count, mem.last_accessed,
-             mem.created_at, mem.updated_at, mem.valid_at, mem.invalid_at,
-             mem.superseded_by, mem.source,
-             json.dumps(mem.attachments, ensure_ascii=False),
-             psycopg.Binary(embedding)),
-        )
-        for ent in mem.entities:
+        with self.conn.transaction():
             self.conn.execute(
-                "INSERT INTO entities (name, memory_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-                (ent, mem.id),
+                """INSERT INTO memories (id, text, memory_type, user_id, agent_id, run_id,
+                                         entities, metadata, importance, access_count,
+                                         last_accessed, created_at, updated_at, valid_at,
+                                         invalid_at, superseded_by, source, attachments, embedding)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (mem.id, mem.text, mem.memory_type, mem.user_id, mem.agent_id, mem.run_id,
+                 json.dumps(mem.entities, ensure_ascii=False),
+                 json.dumps(mem.metadata, ensure_ascii=False),
+                 mem.importance, mem.access_count, mem.last_accessed,
+                 mem.created_at, mem.updated_at, mem.valid_at, mem.invalid_at,
+                 mem.superseded_by, mem.source,
+                 json.dumps(mem.attachments, ensure_ascii=False),
+                 psycopg.Binary(embedding)),
             )
-        self.log_event(mem.id, Event.ADD, None, mem.text, at=mem.created_at)
+            for ent in mem.entities:
+                self.conn.execute(
+                    "INSERT INTO entities (name, memory_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (ent, mem.id),
+                )
+            self.log_event(mem.id, Event.ADD, None, mem.text, at=mem.created_at)
 
     def replace_text(self, mem_id: str, new_text: str, entities: List[str],
                      embedding: bytes, metadata: Optional[Dict[str, Any]] = None) -> None:
@@ -128,58 +129,63 @@ class PostgresStorage(StorageBase):
             metadata_json = row["metadata"]
         import psycopg
 
-        self.conn.execute(
-            """UPDATE memories SET text=%s, entities=%s, metadata=%s, embedding=%s,
-                   updated_at=%s, valid_at=%s, invalid_at=NULL WHERE id=%s""",
-            (new_text, json.dumps(entities, ensure_ascii=False), metadata_json,
-             psycopg.Binary(embedding), utcnow(), utcnow(), mem_id),
-        )
-        self.conn.execute("DELETE FROM entities WHERE memory_id = %s", (mem_id,))
-        for ent in entities:
+        with self.conn.transaction():
             self.conn.execute(
-                "INSERT INTO entities (name, memory_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-                (ent, mem_id),
+                """UPDATE memories SET text=%s, entities=%s, metadata=%s, embedding=%s,
+                       updated_at=%s, valid_at=%s, invalid_at=NULL WHERE id=%s""",
+                (new_text, json.dumps(entities, ensure_ascii=False), metadata_json,
+                 psycopg.Binary(embedding), utcnow(), utcnow(), mem_id),
             )
-        self.log_event(mem_id, Event.UPDATE, row["text"], new_text)
+            self.conn.execute("DELETE FROM entities WHERE memory_id = %s", (mem_id,))
+            for ent in entities:
+                self.conn.execute(
+                    "INSERT INTO entities (name, memory_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                    (ent, mem_id),
+                )
+            self.log_event(mem_id, Event.UPDATE, row["text"], new_text)
 
     def soft_delete(self, mem_id: str) -> None:
         row = self.get_raw(mem_id)
         if row is None:
             return
         now = utcnow()
-        self.conn.execute(
-            "UPDATE memories SET invalid_at=%s, updated_at=%s WHERE id=%s", (now, now, mem_id)
-        )
-        self.log_event(mem_id, Event.DELETE, row["text"], None)
+        with self.conn.transaction():
+            self.conn.execute(
+                "UPDATE memories SET invalid_at=%s, updated_at=%s WHERE id=%s", (now, now, mem_id)
+            )
+            self.log_event(mem_id, Event.DELETE, row["text"], None)
 
     def hard_delete(self, mem_id: str) -> None:
         row = self.get_raw(mem_id)
         if row is None:
             return
-        self.conn.execute("DELETE FROM memories WHERE id = %s", (mem_id,))
-        self.conn.execute("DELETE FROM entities WHERE memory_id = %s", (mem_id,))
-        self.log_event(mem_id, Event.DELETE, row["text"], None)
+        with self.conn.transaction():
+            self.conn.execute("DELETE FROM memories WHERE id = %s", (mem_id,))
+            self.conn.execute("DELETE FROM entities WHERE memory_id = %s", (mem_id,))
+            self.log_event(mem_id, Event.DELETE, row["text"], None)
 
     def supersede(self, mem_id: str, by_id: str) -> None:
         row = self.get_raw(mem_id)
         if row is None:
             return
         now = utcnow()
-        self.conn.execute(
-            "UPDATE memories SET invalid_at=%s, updated_at=%s, superseded_by=%s WHERE id=%s",
-            (now, now, by_id, mem_id),
-        )
-        self.log_event(mem_id, Event.CONSOLIDATE, row["text"], by_id)
+        with self.conn.transaction():
+            self.conn.execute(
+                "UPDATE memories SET invalid_at=%s, updated_at=%s, superseded_by=%s WHERE id=%s",
+                (now, now, by_id, mem_id),
+            )
+            self.log_event(mem_id, Event.CONSOLIDATE, row["text"], by_id)
 
     def mark_accessed(self, mem_ids: Iterable[str]) -> None:
         now = utcnow()
-        for mid in mem_ids:
-            self.conn.execute(
-                """UPDATE memories SET access_count = access_count + 1,
-                       last_accessed = %s WHERE id = %s""",
-                (now, mid),
-            )
-            self.log_event(mid, Event.ACCESS, None, None)
+        with self.conn.transaction():
+            for mid in mem_ids:
+                self.conn.execute(
+                    """UPDATE memories SET access_count = access_count + 1,
+                           last_accessed = %s WHERE id = %s""",
+                    (now, mid),
+                )
+                self.log_event(mid, Event.ACCESS, None, None)
 
     def log_event(self, memory_id: str, event: str, prev: Optional[str],
                   new: Optional[str], at: Optional[str] = None) -> None:

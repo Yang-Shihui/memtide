@@ -594,6 +594,74 @@ class TestCallerTimestamp(unittest.TestCase):
             eng.add("我叫李雷", user_id="ts", timestamp="去年夏天")
         eng.close()
 
+    def test_naive_timestamp_normalized_to_utc(self):
+        # timezone-less imports are read as UTC so ordering stays consistent
+        # when a dataset mixes naive and aware timestamps (issue #5)
+        eng = fresh_engine()
+        eng.add("我叫王一，住在苏州", user_id="tsn", infer=False,
+                timestamp="2024-06-01T10:30:00")
+        mems = eng.get_all("tsn")
+        self.assertTrue(mems)
+        self.assertTrue(all(m.created_at.endswith("+00:00") for m in mems),
+                        {m.created_at for m in mems})
+        eng.close()
+
+    def test_mixed_naive_and_aware_timestamps_sort_consistently(self):
+        eng = fresh_engine()
+        eng.add("我叫王一，住在苏州", user_id="tsx", infer=False,
+                timestamp="2024-06-01T18:30:00")            # naive (read as UTC)
+        eng.add("用户搬到了南京", user_id="tsx", infer=False,
+                timestamp="2024-06-02T02:00:00+08:00")       # aware → 18:00Z, older
+        mems = [m.created_at for m in eng.get_all("tsx")]
+        # every stored timestamp is UTC-normalized, so lexicographic order
+        # equals chronological order even across mixed input offsets
+        self.assertEqual(sorted(mems), [
+            "2024-06-01T18:00:00+00:00", "2024-06-01T18:30:00+00:00"])
+        eng.close()
+
+
+class TestWriteTransactionAtomicity(unittest.TestCase):
+    """A crash mid-write must not leave a half-committed state: memories,
+    entities and the audit chain roll back together (GitHub issue #1)."""
+
+    def test_insert_rolls_back_on_midwrite_failure(self):
+        from memtide.types import Memory
+
+        eng = fresh_engine()
+        m = Memory(text="用户喜欢喝乌龙茶", user_id="tx")
+        orig = eng.store.log_event
+        def boom(*a, **k):
+            raise RuntimeError("simulated crash after the memories insert")
+        eng.store.log_event = boom
+        try:
+            with self.assertRaises(RuntimeError):
+                eng.store.insert(m, eng.retriever.embed_for_storage(m.text))
+        finally:
+            eng.store.log_event = orig
+        self.assertIsNone(eng.store.get(m.id), "memory row must roll back")
+        self.assertEqual(eng.store.history(memory_id=m.id), [])
+        eng.close()
+
+    def test_replace_text_rolls_back_on_failure(self):
+        eng = fresh_engine()
+        r = eng.add("我叫李雷，住在杭州", user_id="tx2")
+        mem_id = next(m.id for m in eng.get_all("tx2") if "杭州" in m.text)
+        orig = eng.store.log_event
+        def boom(*a, **k):
+            raise RuntimeError("simulated crash inside replace_text")
+        eng.store.log_event = boom
+        try:
+            with self.assertRaises(RuntimeError):
+                eng.store.replace_text(mem_id, "用户住在上海",
+                                       ["上海"], eng.retriever.embed_for_storage("用户住在上海"))
+        finally:
+            eng.store.log_event = orig
+        mem = eng.store.get(mem_id)
+        self.assertIn("杭州", mem.text, "text update must roll back")
+        self.assertTrue(any(e["event"] == "UPDATE" or e["event"] == "ADD"
+                            for e in eng.store.history(memory_id=mem_id)))
+        eng.close()
+
     def test_old_memories_rank_lower_via_retention(self):
         eng = fresh_engine()
         eng.add("我喜欢喝美式咖啡", user_id="ts2", timestamp="2024-01-01T00:00:00+00:00")

@@ -43,10 +43,15 @@ def _locked(fn):
 
 
 def _normalize_ts(timestamp: Optional[str]) -> Optional[str]:
-    """Validate/normalize a caller-supplied event timestamp (ISO-8601)."""
+    """Validate/normalize a caller-supplied event timestamp (ISO-8601).
+
+    Every stored timestamp is normalized to a UTC-offset string: naive
+    values are read as UTC, aware ones are converted. This keeps the
+    lexicographic created_at ordering used by compact/consolidation
+    consistent even when an import mixes offsets."""
     if timestamp is None:
         return None
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     t = timestamp.strip()
     if not t:
@@ -55,7 +60,9 @@ def _normalize_ts(timestamp: Optional[str]) -> Optional[str]:
         dt = datetime.fromisoformat(t.replace("Z", "+00:00"))
     except ValueError as e:
         raise ValueError(f"invalid timestamp {timestamp!r}: need ISO-8601, e.g. 2024-06-01T10:30:00") from e
-    return dt.isoformat(timespec="seconds")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat(timespec="seconds")
 
 
 class MemoryEngine:
@@ -76,6 +83,7 @@ class MemoryEngine:
         self.gate = PredictiveGate(self.cfg)
         self._reflect_stop = None
         self._reflect_thread = None
+        self._reflect_status = {"consecutive_failures": 0, "last_error": None}
         self._pool = None
         self._lock = threading.RLock()
         # Qdrant is an index, PostgreSQL is the source of truth. On startup,
@@ -523,6 +531,12 @@ class MemoryEngine:
                                 if os.path.isdir(self.cfg.media_dir) else 0)
         except OSError:
             s["media_files"] = 0
+        # background reflection health: lets monitoring see a silently
+        # failing loop (issues #4)
+        s["auto_reflect"] = {
+            "active": self.auto_reflect_active,
+            **self._reflect_status,
+        }
         return s
 
     @_locked
@@ -716,6 +730,7 @@ class MemoryEngine:
 
         stop = threading.Event()
         self._reflect_stop = stop
+        self._reflect_status = {"consecutive_failures": 0, "last_error": None}
 
         def loop():
             while not stop.wait(interval_seconds):
@@ -724,8 +739,18 @@ class MemoryEngine:
                     for uid in uids:
                         self.consolidate_background(uid, agent_id=agent_id,
                                                     run_id=run_id)
+                    self._reflect_status["consecutive_failures"] = 0
+                    self._reflect_status["last_error"] = None
                 except Exception:
-                    pass  # a failed pass must never kill the loop
+                    # a failed pass must never kill the loop — but it must
+                    # also never be invisible: log the first failure and
+                    # then every 10th consecutive one
+                    st = self._reflect_status
+                    st["consecutive_failures"] += 1
+                    st["last_error"] = f"{type(e).__name__}: {e}"
+                    n = st["consecutive_failures"]
+                    if n == 1 or n % 10 == 0:
+                        print(f"[memtide] auto-reflect failed {n}x: {st['last_error']}")
 
         self._reflect_thread = threading.Thread(
             target=loop, name="memtide-auto-reflect", daemon=True)
@@ -734,7 +759,11 @@ class MemoryEngine:
     def disable_auto_reflect(self) -> None:
         if self._reflect_stop is not None:
             self._reflect_stop.set()
+        thread = self._reflect_thread
         self._reflect_stop = None
+        self._reflect_status = {"consecutive_failures": 0, "last_error": None}
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=5)  # no orphaned pass overlapping a new loop
         self._reflect_thread = None
 
     @property

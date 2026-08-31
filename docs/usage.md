@@ -56,7 +56,8 @@ res = mem.add(
     agent_id=None, run_id=None,    # 作用域：agent / 会话（可选）
     metadata={"k": "v"},           # 附加到本批所有事实的元数据
     infer=True,                    # False = 原文直存（跳过抽取，保留原始对话）
-    timestamp=None,                # ISO-8601：数据自身时间（导入历史对话用）
+    timestamp=None,                # ISO-8601：数据自身时间（导入历史对话用）；
+                                   # 无时区按 UTC 读，一律归一为 UTC 存储
 )
 # res: AddResult
 #   .facts     抽取出的候选事实
