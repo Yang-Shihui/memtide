@@ -42,11 +42,16 @@ def main():
     from memtide.config import config_from_env
 
     # this script PHYSICALLY deletes everything under the demo user names;
-    # never do that silently on an interactive production deployment
-    if "--yes" not in sys.argv and sys.stdin.isatty():
-        reply = input(f"hard-delete ALL memories for users {DEMO_USERS}? type 'yes': ")
-        if reply.strip().lower() != "yes":
-            sys.exit("aborted")
+    # never do that silently: interactive runs get a typed confirmation,
+    # non-interactive runs (docker exec, cron) must pass --yes explicitly
+    if "--yes" not in sys.argv:
+        if sys.stdin.isatty():
+            reply = input(f"hard-delete ALL memories for users {DEMO_USERS}? type 'yes': ")
+            if reply.strip().lower() != "yes":
+                sys.exit("aborted")
+        else:
+            sys.exit("refusing to hard-delete demo users non-interactively; "
+                     "re-run with --yes to confirm")
 
     cfg = config_from_env()
     eng = MemoryEngine(cfg)

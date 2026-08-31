@@ -217,7 +217,7 @@ python -m memtide serve --port 8300
 ```bash
 cp .env.example .env          # 填 LLM_* / DASHSCOPE_API_KEY
 docker compose up -d --build
-docker exec memtide-memtide-1 python /app/scripts/seed_demo.py   # 可重复的演示数据
+docker exec -it memtide-memtide-1 python /app/scripts/seed_demo.py   # 交互确认后播种；脚本化加 --yes
 ```
 
 - 栈：`memtide`（REST+UI, :8300）+ `paradedb/paradedb:pg16`（PostgreSQL 16 + BM25）+ `qdrant`

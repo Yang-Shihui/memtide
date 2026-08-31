@@ -261,7 +261,7 @@ attachments 列）、`entities`（name↔memory_id，实体检索通道）、
 
 ## 11. 测试策略
 
-- **Hermetic（73 个）**：本地 OpenAI 协议服务器 + 隔离 PG schema，~15s，无外部网络。
+- **Hermetic（77 个）**：本地 OpenAI 协议服务器 + 隔离 PG schema，~15s，无外部网络。
   覆盖写管线/检索/门控/反思/审计/REST/UI 托管/时间戳/多模态/旧库迁移/
   性能路径（查询计数）/压实/媒体GC/导出导入/鉴权/调度器/历次 bug 回归。
 - **Live（8 个，MEMTIDE_LIVE=1 门控）**：真实 LLM + embedding + 视觉端点，
