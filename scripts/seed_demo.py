@@ -41,6 +41,13 @@ def main():
     # inherit the production deployment config (PG/Qdrant/real LLM/embedding)
     from memtide.config import config_from_env
 
+    # this script PHYSICALLY deletes everything under the demo user names;
+    # never do that silently on an interactive production deployment
+    if "--yes" not in sys.argv and sys.stdin.isatty():
+        reply = input(f"hard-delete ALL memories for users {DEMO_USERS}? type 'yes': ")
+        if reply.strip().lower() != "yes":
+            sys.exit("aborted")
+
     cfg = config_from_env()
     eng = MemoryEngine(cfg)
     print(f"backend: storage={cfg.storage_backend} vector={cfg.vector_backend} "

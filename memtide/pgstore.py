@@ -321,12 +321,15 @@ class PostgresStorage(StorageBase):
     def entity_lookup(self, entities: List[str], limit: int = 40,
                       user_id: Optional[str] = None, agent_id: Optional[str] = None,
                       run_id: Optional[str] = None) -> List[str]:
+        def like_escape(s: str) -> str:
+            return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
         out: List[str] = []
         for ent in entities:
             if len(ent) < 2:
                 continue
             clauses = ["m.invalid_at IS NULL"]
-            params: List[Any] = [f"%{ent}%"]
+            params: List[Any] = [f"%{like_escape(ent)}%"]
             if user_id:
                 clauses.append("m.user_id = %s")
                 params.append(user_id)

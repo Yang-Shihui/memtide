@@ -169,6 +169,43 @@ def check_4_docker():
     return f"docker 栈 OK: {stats['backend']}"
 
 
+def cleanup():
+    """Best-effort removal of everything this run created: the throwaway PG
+    schema, the throwaway Qdrant collection, and the docker-smoke memories."""
+    import psycopg
+
+    try:
+        base = os.environ.get(
+            "MEMTIDE_PG_DSN", "postgresql://mnemos:mnemos-local-dev@localhost:5432/mnemos")
+        admin = psycopg.connect(base, autocommit=True)
+        admin.execute(f'DROP SCHEMA IF EXISTS "check_{RUN}" CASCADE')
+        admin.close()
+        print(f"cleanup: dropped schema check_{RUN}")
+    except Exception as e:
+        print(f"cleanup: schema skip ({e})")
+    try:
+        qurl = os.environ.get("MEMTIDE_QDRANT_URL", "http://localhost:6333")
+        rq = urllib.request.Request(
+            f"{qurl}/collections/memtide_live_check_{RUN}", method="DELETE")
+        urllib.request.urlopen(rq, timeout=10).read()
+        print(f"cleanup: deleted collection memtide_live_check_{RUN}")
+    except Exception as e:
+        print(f"cleanup: collection skip ({e})")
+    if "--docker" in sys.argv:
+        try:
+            base = os.environ.get("MEMTIDE_DOCKER_URL", "http://localhost:8300")
+            listing = urllib.request.urlopen(
+                f"{base}/memories?user_id={USER('smoke')}&limit=1000", timeout=30)
+            mems = json.loads(listing.read().decode())
+            for m in mems:
+                rq = urllib.request.Request(
+                    f"{base}/memories/{m['id']}?hard=true", method="DELETE")
+                urllib.request.urlopen(rq, timeout=30).read()
+            print(f"cleanup: hard-deleted {len(mems)} smoke memories")
+        except Exception as e:
+            print(f"cleanup: smoke memories skip ({e})")
+
+
 if __name__ == "__main__":
     if not LLM_URL:
         sys.exit("error: set MEMTIDE_LLM_BASE_URL / LLM_BASE_URL (see .env.example); "
@@ -178,6 +215,7 @@ if __name__ == "__main__":
     check("3. 真实后端全链路（抽取/门控/检索/更新/反思/审计）", check_3_full_pipeline)
     if "--docker" in sys.argv:
         check("4. Docker 栈 REST 冒烟", check_4_docker)
+    cleanup()
 
     fails = [r for r in RESULTS if not r[1]]
     print("\n" + "=" * 60)

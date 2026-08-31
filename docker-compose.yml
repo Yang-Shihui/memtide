@@ -30,8 +30,17 @@ services:
 
   memtide:
     build: .
+    restart: unless-stopped
     ports:
       - "${MEMTIDE_PORT:-8300}:8300"
+    healthcheck:
+      # any HTTP answer (incl. 401/404) proves the server is handling
+      # requests; only connection failures mean unhealthy
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u, urllib.error as e, sys;\ntry:\n u.urlopen('http://127.0.0.1:8300/stats', timeout=5)\nexcept e.HTTPError: sys.exit(0)\nexcept Exception: sys.exit(1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     volumes:
       - mndata:/data
     environment:
