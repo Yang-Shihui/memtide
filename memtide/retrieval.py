@@ -31,6 +31,7 @@ QUERY_EXPANSION_PROMPT = """You optimize retrieval queries for a long-term memor
 Given the query below, produce exactly two alternative search queries:
 1. its English translation (or English paraphrase if it is already English),
 2. a rephrasing that a memory entry about this topic would likely use.
+Keep proper nouns (people, places, technologies) unchanged in every variant.
 
 Output STRICT JSON: {{"variants": ["...", "..."]}}
 

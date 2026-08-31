@@ -32,8 +32,9 @@ from .types import Memory, MemoryType
 
 CONSOLIDATION_SUMMARY_PROMPT = """You are the background memory reflection module of an AI agent.
 The facts below are same-topic memories about one user. Distill them into ONE
-short summary memory (1-2 sentences, third person, keeping every distinct
-detail that matters; drop repetition).
+short summary memory (third person, keeping every distinct detail that
+matters; drop repetition). Write it in the language the facts mostly use;
+1-2 sentences, up to 4 for a large cluster.
 
 Output STRICT JSON: {{"summary": "..."}}
 

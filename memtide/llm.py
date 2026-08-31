@@ -19,8 +19,14 @@ about the user (and about the assistant's instructions/preferences).
 
 Rules:
 - One fact per item; short, self-contained, third-person ("The user's name is Li Lei").
+- Write each fact in the same language as the conversation.
 - Include: preferences, identity, relationships, goals, constraints, corrections.
 - Do NOT include small talk, questions, or transient context.
+- Do NOT output two items that state the same fact.
+- "entities" lists concrete nouns worth indexing: person names, places,
+  products, technologies, organizations (lowercase common nouns, keep names verbatim).
+- "importance" rubric: identity/core preferences 0.8-0.9, goals/plans and
+  corrections 0.7, useful context 0.4-0.6, trivial 0.2.
 - "slot" marks volatile attributes that get REPLACED when they change. Use one
   of: "name"|"role"|"employer"|"location"|"age"|"stack"|"plan", or null for
   non-volatile facts. (e.g. name -> name, lives in -> location, works at -> employer,
@@ -35,8 +41,10 @@ Given a NEW fact and EXISTING memories, decide the operation for each candidate:
 
 - "NOOP": candidate already states the same fact as the new fact, EVEN IF the
   wording differs (e.g. "likes Americano" vs "enjoys Americano coffee").
-- "UPDATE": candidate should be replaced by the new fact (superseded or corrected).
-- "DELETE": candidate is contradicted/unmade by the new fact and worth removing.
+- "UPDATE": candidate should be REPLACED by a new value the new fact provides
+  ("I moved to Shanghai" -> "lives in Hangzhou" becomes "lives in Shanghai").
+- "DELETE": the new fact says the old one is no longer true and provides NO
+  replacement value ("I quit coffee" -> "likes Americano" is deleted).
 - "ADD" (returned implicitly): keep both, they are genuinely different facts.
 Be conservative with ADD: near-duplicates with different phrasing are NOOP.
 
@@ -56,8 +64,9 @@ Below are SEVERAL new facts, each with its own candidate memories. For EVERY
 item decide the operation per candidate — same rules as ever:
 
 - "NOOP": candidate already states the same fact, EVEN IF the wording differs.
-- "UPDATE": candidate should be replaced by the new fact.
-- "DELETE": candidate is contradicted/unmade by the new fact.
+- "UPDATE": candidate should be REPLACED by a new value the new fact provides.
+- "DELETE": the new fact says the old one is no longer true and provides NO
+  replacement value.
 - no operation: keep both, genuinely different facts (near-duplicates with
   different phrasing are NOOP — be conservative about ADD).
 
