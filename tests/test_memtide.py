@@ -248,10 +248,11 @@ class TestDecayAndContext(unittest.TestCase):
         mem = eng.get_all()[0]
         # age the memory to 100 days -> retention ~ 0.5^20 << floor
         old = (datetime.now(timezone.utc) - timedelta(days=100)).isoformat(timespec="seconds")
-        eng.store.conn.execute(
-            "UPDATE memories SET created_at=%s, updated_at=%s, valid_at=%s WHERE id=%s",
-            (old, old, old, mem.id),
-        )
+        with eng.store._acquire() as conn:
+            conn.execute(
+                "UPDATE memories SET created_at=%s, updated_at=%s, valid_at=%s WHERE id=%s",
+                (old, old, old, mem.id),
+            )
         self.assertLess(retention(eng.store.get(mem.id), 5.0, 0.4), 0.05)
         hits = eng.search("用户住哪", include_forgotten=False)
         self.assertTrue(all(h.memory.id != mem.id for h in hits))
@@ -686,15 +687,15 @@ class TestWriteTransactionAtomicity(unittest.TestCase):
 
         eng = fresh_engine()
         m = Memory(text="用户喜欢喝乌龙茶", user_id="tx")
-        orig = eng.store.log_event
+        orig = eng.store.log_event_conn
         def boom(*a, **k):
             raise RuntimeError("simulated crash after the memories insert")
-        eng.store.log_event = boom
+        eng.store.log_event_conn = boom
         try:
             with self.assertRaises(RuntimeError):
                 eng.store.insert(m, eng.retriever.embed_for_storage(m.text))
         finally:
-            eng.store.log_event = orig
+            eng.store.log_event_conn = orig
         self.assertIsNone(eng.store.get(m.id), "memory row must roll back")
         self.assertEqual(eng.store.history(memory_id=m.id), [])
         eng.close()
@@ -703,16 +704,16 @@ class TestWriteTransactionAtomicity(unittest.TestCase):
         eng = fresh_engine()
         r = eng.add("我叫李雷，住在杭州", user_id="tx2")
         mem_id = next(m.id for m in eng.get_all("tx2") if "杭州" in m.text)
-        orig = eng.store.log_event
+        orig = eng.store.log_event_conn
         def boom(*a, **k):
             raise RuntimeError("simulated crash inside replace_text")
-        eng.store.log_event = boom
+        eng.store.log_event_conn = boom
         try:
             with self.assertRaises(RuntimeError):
                 eng.store.replace_text(mem_id, "用户住在上海",
                                        ["上海"], eng.retriever.embed_for_storage("用户住在上海"))
         finally:
-            eng.store.log_event = orig
+            eng.store.log_event_conn = orig
         mem = eng.store.get(mem_id)
         self.assertIn("杭州", mem.text, "text update must roll back")
         self.assertTrue(any(e["event"] == "UPDATE" or e["event"] == "ADD"

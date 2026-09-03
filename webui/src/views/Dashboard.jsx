@@ -98,24 +98,28 @@ function GateBar({ counts, total }) {
 
 export default function Dashboard({ view }) {
   const [stats, setStats] = useState(null);
-  const [mems, setMems] = useState(null);
   const [recent, setRecent] = useState([]);
   const [err, setErr] = useState("");
 
   useEffect(() => {
     let alive = true;
+    let timer = null;
     const load = () => {
-      Promise.all([api.stats(), api.list({ limit: 500 }), api.history(null, 10)])
-        .then(([s, m, h]) => { if (alive) { setStats(s); setMems(m); setRecent(h); } })
+      Promise.all([api.stats(), api.history(null, 10)])
+        .then(([s, h]) => { if (alive) { setStats(s); setRecent(h); } })
         .catch((e) => { if (alive) setErr(e.message); });
     };
+    const tick = () => {
+      if (document.hidden) return;  // don't poll a background tab
+      load();
+    };
     load();
-    const timer = setInterval(load, 5000);  // near-realtime overview
+    timer = setInterval(tick, 15000);  // stats + history only (server-side aggregates)
     return () => { alive = false; clearInterval(timer); };
   }, []);
 
   if (err) return <div className="err">{err}</div>;
-  if (!stats || !mems) {
+  if (!stats) {
     return (
       <>
         <div className="grid cols3">
@@ -131,14 +135,10 @@ export default function Dashboard({ view }) {
   const events = stats.events || {};
   const maxEv = Math.max(1, ...Object.values(events));
   const backend = stats.backend || {};
-
-  const typeCounts = {};
-  const gateCounts = {};
-  for (const m of mems) {
-    typeCounts[m.memory_type] = (typeCounts[m.memory_type] || 0) + 1;
-    const g = m.metadata?.gate || "unmarked";
-    gateCounts[g] = (gateCounts[g] || 0) + 1;
-  }
+  const typeCounts = stats.by_type || {};
+  const gateCounts = stats.by_gate || {};
+  const unmarked = (stats.active_memories || 0) - Object.values(gateCounts).reduce((a, b) => a + b, 0);
+  if (unmarked > 0) gateCounts.unmarked = (gateCounts.unmarked || 0) + unmarked;
 
   return (
     <>
@@ -171,7 +171,7 @@ export default function Dashboard({ view }) {
         <div>
           <h2 style={{ marginTop: 0 }}>门控决策分布</h2>
           <div className="panel" style={{ paddingTop: 26 }}>
-            <GateBar counts={gateCounts} total={mems.length} />
+            <GateBar counts={gateCounts} total={stats.active_memories} />
             <div className="muted" style={{ marginTop: 14 }}>
               S = −log₂ p̂ —— 完全被旧记忆预测到的不编码；惊喜值越高，重要度加成越大。
             </div>
