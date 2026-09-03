@@ -38,7 +38,7 @@ import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from .llm import VOLATILE_SLOTS
+from .slots import same_slot
 from .types import ExtractedFact, Memory
 
 
@@ -83,7 +83,8 @@ class PredictiveGate:
         # predecessor is unpredictable by definition -> fully surprising.
         if getattr(cfg, "gate_slot_scoped", True) and fact.slot:
             slot_sims = [min(s, 1.0) for s, mem in similar
-                         if mem.metadata.get("slot") == fact.slot]
+                         if same_slot(fact.slot, mem.metadata.get("slot"),
+                                      getattr(cfg, "slot_aliases", None))]
             if slot_sims:
                 prior_sim = max(slot_sims)
             else:
@@ -91,16 +92,19 @@ class PredictiveGate:
         else:
             prior_sim = max_sim
         # max_sim**2 = squared-exponential-style kernel; 0.02 floor keeps the
-        # log finite for a truly unseen fact (surprise saturates ~5.6 bits).
+        # log finite for a truly unseen fact (surprise saturates ~11.3 bits).
         p_hat = max(prior_sim, 0.02) ** 2
         surprise = -math.log2(p_hat) + 0.0  # +0.0 normalizes -0.0
 
-        # --- override: volatile attribute conflict is always an error signal -
-        if fact.slot in VOLATILE_SLOTS:
+        # --- override: single-value slot conflict is always an error signal --
+        # Slot is an open hint: any canonical slot match counts. Normalised
+        # text compare avoids re-encoding case/punctuation variants.
+        if fact.slot:
             for sim, mem in similar:
-                if (mem.metadata.get("slot") == fact.slot
+                if (same_slot(fact.slot, mem.metadata.get("slot"),
+                              getattr(cfg, "slot_aliases", None))
                         and sim >= cfg.gate_slot_floor
-                        and mem.text != fact.text):
+                        and (mem.text.strip().lower() != fact.text.strip().lower())):
                     return GateDecision(True, "volatile-update", surprise,
                                         max_sim, schema_fit, 0.0)
 

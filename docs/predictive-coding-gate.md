@@ -51,7 +51,7 @@ p_hat(f) = max_sim²          max_sim = max_m cos(v_f, v_m)   （对所有有效
 ```
 
 平方核（平方指数型）把相似度映射到 [0,1] 的概率空间，0.02 的下限保证对完全
-未见的事实 log 有限（surprise 饱和约 5.6 bits）。
+未见的事实 log 有限（surprise 饱和约 11.3 bits）。
 
 ### 2. 预测误差 = 自信息
 

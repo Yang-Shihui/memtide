@@ -112,6 +112,12 @@ class MemoryConfig:
     stt_base_url: str = ""
     stt_model: str = ""
 
+    # --- slot normalisation (slots.py) --------------------------------------
+    # Open-hint slots: canonicalise aliases (city/住址 -> location) so the
+    # same meaning with different names still matches. Extra user aliases
+    # merge over the built-in table.
+    slot_aliases: dict = field(default_factory=dict)
+
     # --- service / ops -------------------------------------------------------
     api_key: Optional[str] = None        # when set, REST requires it (X-API-Key)
     auto_reflect_seconds: int = 0        # >0: run consolidate_background periodically

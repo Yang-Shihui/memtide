@@ -34,9 +34,9 @@ services:
     ports:
       - "${MEMTIDE_PORT:-8300}:8300"
     healthcheck:
-      # any HTTP answer (incl. 401/404) proves the server is handling
-      # requests; only connection failures mean unhealthy
-      test: ["CMD-SHELL", "python -c \"import urllib.request as u, urllib.error as e, sys;\ntry:\n u.urlopen('http://127.0.0.1:8300/stats', timeout=5)\nexcept e.HTTPError: sys.exit(0)\nexcept Exception: sys.exit(1)\""]
+      # pass MEMTIDE_API_KEY when set: /stats is authed, and a 401 would
+      # otherwise mask a dead DB/Qdrant as healthy
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u, urllib.error as e, os, sys;\nreq=u.Request('http://127.0.0.1:8300/stats', headers={'X-API-Key': os.environ.get('MEMTIDE_API_KEY','')} if os.environ.get('MEMTIDE_API_KEY') else {});\ntry:\n u.urlopen(req, timeout=5); sys.exit(0)\nexcept e.HTTPError as h:\n sys.exit(0 if h.code in (200,404) else 1)\nexcept Exception: sys.exit(1)\""]
       interval: 15s
       timeout: 5s
       retries: 5

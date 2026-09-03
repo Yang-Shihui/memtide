@@ -228,13 +228,16 @@ class MemoryEngine:
                 if mtype not in MemoryType.ALL:
                     mtype = MemoryType.FACT
                 slot = item.get("slot")
+                from .slots import canonicalize_slot
+
                 facts.append(ExtractedFact(
                     text=str(item["text"]).strip(),
                     memory_type=mtype,
                     importance=max(0.0, min(1.0, float(item.get("importance", 0.5)))),
                     entities=[str(e) for e in item.get("entities", [])][:8],
-                    slot=slot if slot in ("name", "role", "employer", "location",
-                                          "age", "stack", "plan") else None,
+                    slot=canonicalize_slot(
+                        slot,
+                        getattr(self.cfg, "slot_aliases", None)),
                 ))
             except (KeyError, TypeError, ValueError):
                 continue
@@ -291,14 +294,19 @@ class MemoryEngine:
         return out
 
     def _candidate_payload(self, fact: ExtractedFact, similar: List[tuple]) -> List[dict]:
-        """Candidates strong enough to consult the consolidator about."""
-        from .llm import VOLATILE_SLOTS
+        """Candidates strong enough to consult the consolidator about.
 
+        Slot is a hint, not a rule: same-meaning slots lower the bar so the
+        LLM can decide UPDATE vs ADD (multi-value / time-qualified stay ADD).
+        """
+        from .slots import same_slot
+
+        aliases = getattr(self.cfg, "slot_aliases", None)
         return [{"id": m.id, "text": m.text, "slot": m.metadata.get("slot")}
                 for sim, m in similar[: self.cfg.similarity_candidates]
                 if sim >= self.cfg.conflict_threshold
-                or (sim >= self.cfg.gate_slot_floor and fact.slot in VOLATILE_SLOTS
-                    and m.metadata.get("slot") == fact.slot)]
+                or (sim >= self.cfg.gate_slot_floor and fact.slot
+                    and same_slot(fact.slot, m.metadata.get("slot"), aliases))]
 
     def _llm_decisions(self, fact_text: str, candidates: List[dict],
                        slot: "str | None" = None) -> List[dict]:
@@ -741,7 +749,7 @@ class MemoryEngine:
                                                     run_id=run_id)
                     self._reflect_status["consecutive_failures"] = 0
                     self._reflect_status["last_error"] = None
-                except Exception:
+                except Exception as e:
                     # a failed pass must never kill the loop — but it must
                     # also never be invisible: log the first failure and
                     # then every 10th consecutive one

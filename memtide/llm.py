@@ -27,9 +27,12 @@ Rules:
   products, technologies, organizations (lowercase common nouns, keep names verbatim).
 - "importance" rubric: identity/core preferences 0.8-0.9, goals/plans and
   corrections 0.7, useful context 0.4-0.6, trivial 0.2.
-- "slot" marks volatile attributes that get REPLACED when they change. Use one
-  of: "name"|"role"|"employer"|"location"|"age"|"stack"|"plan", or null for
-  non-volatile facts. (e.g. name -> name, lives in -> location, works at -> employer,
+- "slot" marks single-value attributes that get REPLACED when they change.
+  Use a short lowercase string (e.g. "name"|"role"|"employer"|"location"|
+  "age"|"stack"|"plan", or invent one like "spouse"|"pet" when needed),
+  or null for multi-value facts (likes, skills lists) and one-off events.
+  Write time qualifiers into "text", never into "slot".
+  (e.g. name -> name, lives in -> location, works at -> employer,
   is a ... engineer -> role, uses Rust -> stack, is working on -> plan)
 - Output STRICT JSON: {{"facts": [{{"text": "...", "type": "fact|preference|episodic|procedural", "importance": 0.0-1.0, "entities": ["..."], "slot": null}}]}}
 
@@ -48,9 +51,12 @@ Given a NEW fact and EXISTING memories, decide the operation for each candidate:
 - "ADD" (returned implicitly): keep both, they are genuinely different facts.
 Be conservative with ADD: near-duplicates with different phrasing are NOOP.
 
-Candidates carry their "slot" tag when the memory tracks a volatile
-attribute (location/role/...): a new fact for the SAME slot always means
-UPDATE (the value changed), never NOOP.
+Candidates carry their "slot" tag when the memory tracks a single-value
+attribute (location/role/...): a new fact for the SAME meaning slot is a
+strong UPDATE signal — but not ironclad. Judge by meaning, not spelling
+("city" vs "location" is the same slot). Multi-value facts (two homes,
+Rust + Python) and time-qualified facts (last year vs this year) should be
+kept as ADD even when slots match. Same-value restatement is NOOP.
 
 Output STRICT JSON: {{"operations": [{{"id": "...", "op": "NOOP|UPDATE|DELETE", "reason": "..."}}]}}
 Pick at most one operation per candidate; if nothing matches, return an empty list.
@@ -75,7 +81,9 @@ Output STRICT JSON:
 {{"results": [{{"fact": "<the item's fact text>", "operations": [{{"id": "...", "op": "NOOP|UPDATE|DELETE", "reason": "..."}}]}}]}}
 Return one result per item, in order.
 
-Items carry "slot" (the new fact's volatile-attribute tag, or null).
+Items carry "slot" (the new fact's single-value attribute tag, or null).
+Slots are hints: judge by meaning, not spelling; multi-value or
+time-qualified facts stay ADD even when slots match.
 Items (JSON): {items}"""
 
 
@@ -159,9 +167,11 @@ def _loads_json(text: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-# A new fact for one of these slots *supersedes* the previous fact of the same
-# slot (people move, change jobs, age — the old value becomes invalid, not false).
-VOLATILE_SLOTS = {"name", "location", "employer", "role", "age", "stack", "plan"}
+# Suggested single-value slots (examples for prompts). The engine treats
+# slot as an open hint — see slots.py. Kept for backwards compatibility.
+from .slots import SUGGESTED_SLOTS as _SUGGESTED
+
+VOLATILE_SLOTS = set(_SUGGESTED)
 
 
 def make_llm(config) -> BaseLLM:

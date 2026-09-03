@@ -113,6 +113,63 @@ class TestWritePipeline(unittest.TestCase):
         self.assertIn("UPDATE", events)
         self.assertIn("ADD", events)
 
+    def test_slot_canonicalize_aliases(self):
+        from memtide.slots import canonicalize_slot, same_slot
+
+        self.assertEqual(canonicalize_slot("city"), "location")
+        self.assertEqual(canonicalize_slot("住址"), "location")
+        self.assertEqual(canonicalize_slot("  Location "), "location")
+        self.assertEqual(canonicalize_slot("spouse"), "spouse")  # open slot passes through
+        self.assertIsNone(canonicalize_slot("!!!"))
+        self.assertIsNone(canonicalize_slot("like"))  # multi-value -> no hint
+        self.assertTrue(same_slot("city", "location"))
+        self.assertTrue(same_slot("住址", "location"))
+        self.assertFalse(same_slot("location", "role"))
+
+    def test_gate_alias_volatile_update(self):
+        from memtide.gating import PredictiveGate
+        from memtide.types import ExtractedFact, Memory
+
+        mem = Memory(text="用户住在杭州", user_id="x", metadata={"slot": "location"})
+        fact = ExtractedFact(text="用户住在上海", memory_type="fact", slot="city")
+        d = PredictiveGate(cfg()).evaluate(fact, [(0.6, mem)])
+        self.assertTrue(d.store)
+        self.assertEqual(d.reason, "volatile-update")
+
+    def test_pg_guards_no_resurrect_or_rechain(self):
+        from memtide.types import Memory
+
+        m = Memory(text="用户住在杭州", user_id="g", metadata={"slot": "location"})
+        emb = self.eng.retriever.embed_for_storage(m.text)
+        self.eng.store.insert(m, emb)
+        self.eng.store.soft_delete(m.id)
+        # replace_text must refuse to resurrect an invalidated row
+        self.eng.store.replace_text(m.id, "用户住在上海", [], emb)
+        self.assertIsNotNone(self.eng.store.get(m.id).invalid_at)
+        # supersede twice must keep the original chain
+        m2 = Memory(text="用户住在上海", user_id="g", metadata={"slot": "location"})
+        emb2 = self.eng.retriever.embed_for_storage(m2.text)
+        self.eng.store.insert(m2, emb2)
+        self.eng.store.supersede(m.id, m2.id)
+        first = self.eng.store.get(m.id).superseded_by
+        m3 = Memory(text="用户住在苏州", user_id="g")
+        emb3 = self.eng.retriever.embed_for_storage(m3.text)
+        self.eng.store.insert(m3, emb3)
+        self.eng.store.supersede(m.id, m3.id)
+        self.assertEqual(self.eng.store.get(m.id).superseded_by, first)
+
+    def test_ssrf_media_hosts_blocked(self):
+        from memtide import multimodal
+
+        for bad in ("http://localhost:6333/collections",
+                    "http://127.0.0.1:5432/x",
+                    "http://169.254.169.254/latest/meta-data/",
+                    "http://10.0.0.5/secret"):
+            with self.assertRaises(ValueError, msg=bad):
+                multimodal._guard_url(bad)
+        # public hosts pass the guard (no fetch performed here)
+        multimodal._guard_url("https://example.com/photo.jpg")
+
     def test_manual_add_no_infer(self):
         res = self.eng.add("记住：部署密钥放在 1password 的 infra 库里", infer=False)
         self.assertEqual(res.facts, ["记住：部署密钥放在 1password 的 infra 库里"])

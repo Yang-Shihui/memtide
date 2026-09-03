@@ -160,10 +160,14 @@ def consolidate_rules(new_fact: str, candidates: List[Dict[str, Any]],
             if new_neg != old_neg and _shared_entityish(new_fact, c.get("text", "")):
                 ops.append({"id": c["id"], "op": "UPDATE", "reason": f"polarity conflict (cos={sim:.2f})"})
                 continue
-        if (c.get("slot") and c.get("slot") == new_fact_slot
-                and new_fact != c.get("text")):
+        # Open-hint slot: same canonical slot is a strong UPDATE signal, but
+        # not blind — require a similarity floor so two homes / Rust+Python
+        # (multi-value, time-qualified) stay ADD. Mirrors gate_slot_floor.
+        if (c.get("slot") and new_fact_slot
+                and str(c.get("slot")).strip().lower() == str(new_fact_slot).strip().lower()
+                and new_fact != c.get("text") and sim >= 0.35):
             ops.append({"id": c["id"], "op": "UPDATE",
-                        "reason": f"volatile slot '{c['slot']}' updated (cos={sim:.2f})"})
+                        "reason": f"slot '{c['slot']}' updated (cos={sim:.2f})"})
     return ops
 
 

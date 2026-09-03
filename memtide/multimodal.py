@@ -105,7 +105,28 @@ def _data_url_parts(url: str) -> Tuple[str, bytes]:
     return mime, base64.b64decode(b64)
 
 
+def _guard_url(url: str) -> None:
+    """Block SSRF: server-side fetch must never reach loopback/link-local/
+    private networks or cloud metadata endpoints."""
+    import ipaddress
+    from urllib.parse import urlparse
+
+    host = (urlparse(url).hostname or "").lower().rstrip(".")
+    if host in ("localhost", "metadata.google.internal"):
+        raise ValueError(f"media host blocked: {host}")
+    if host.endswith(".local") or host.endswith(".internal"):
+        raise ValueError(f"media host blocked: {host}")
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return  # DNS name: literal-IP private ranges already covered below
+    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved \
+            or ip.is_multicast or ip.is_unspecified:
+        raise ValueError(f"media IP blocked: {host}")
+
+
 def _fetch_url(url: str, cap: int) -> Tuple[str, bytes]:
+    _guard_url(url)
     req = urllib.request.Request(url, headers={"User-Agent": "memtide/0.1"})
     with urllib.request.urlopen(req, timeout=30) as resp:
         mime = resp.headers.get("Content-Type", "").split(";")[0].strip()

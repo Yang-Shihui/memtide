@@ -121,6 +121,10 @@ class PostgresStorage(StorageBase):
         row = self.get_raw(mem_id)
         if row is None:
             return
+        if row.get("invalid_at") is not None:
+            # Refuse to resurrect soft-deleted/superseded rows: replace_text
+            # clears invalid_at, so updating one would silently bring it back.
+            return
         if metadata is not None:
             merged = json.loads(row["metadata"] or "{}")
             merged.update(metadata)
@@ -167,6 +171,9 @@ class PostgresStorage(StorageBase):
     def supersede(self, mem_id: str, by_id: str) -> None:
         row = self.get_raw(mem_id)
         if row is None:
+            return
+        if row.get("invalid_at") is not None:
+            # Already invalidated: keep the original superseded_by chain intact.
             return
         now = utcnow()
         with self.conn.transaction():

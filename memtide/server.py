@@ -53,6 +53,13 @@ class _BodyTooLarge(Exception):
     pass
 
 
+def _safe_error(e: Exception) -> dict:
+    """Desensitised 500 body: exception type only, message truncated to 200
+    chars so PG DSNs / URLs / paths never leak to API callers."""
+    msg = str(e)[:200]
+    return {"error": f"{type(e).__name__}: {msg}" if msg else type(e).__name__}
+
+
 class _State:
     engine: MemoryEngine
     lock: threading.Lock
@@ -142,7 +149,7 @@ def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
             except _BodyTooLarge:
                 self._json(413, {"error": "request body too large (max 32MB)"})
             except Exception as e:  # malformed params, backend down, ...
-                self._json(500, {"error": f"{type(e).__name__}: {e}"})
+                self._json(500, _safe_error(e))
 
         def _route_do_POST(self):
             path = urlparse(self.path).path.rstrip("/") or "/"
@@ -235,7 +242,7 @@ def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
             try:
                 self._route_do_GET()
             except Exception as e:  # malformed params, backend down, ...
-                self._json(500, {"error": f"{type(e).__name__}: {e}"})
+                self._json(500, _safe_error(e))
 
         def _serve_static(self, path: str) -> None:
             """Static hosting. ``/`` is the landing page (falls back to the
@@ -365,7 +372,7 @@ def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
             try:
                 self._route_do_PUT()
             except Exception as e:  # malformed params, backend down, ...
-                self._json(500, {"error": f"{type(e).__name__}: {e}"})
+                self._json(500, _safe_error(e))
 
         def _route_do_PUT(self):
             path = urlparse(self.path).path.rstrip("/")
@@ -385,7 +392,7 @@ def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
             try:
                 self._route_do_DELETE()
             except Exception as e:  # malformed params, backend down, ...
-                self._json(500, {"error": f"{type(e).__name__}: {e}"})
+                self._json(500, _safe_error(e))
 
         def _route_do_DELETE(self):
             path = urlparse(self.path).path.rstrip("/")
