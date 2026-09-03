@@ -1552,6 +1552,30 @@ class TestOptimizations(unittest.TestCase):
         self.assertTrue(eng.get_all("race", limit=100))
         eng.close()
 
+    def test_pool_does_not_leak_connections(self):
+        """Regression: a bounded pool must return every borrowed connection —
+        a leak would pile up 'too many clients' until PG refuses new ones
+        (GitHub incident: dashboard polling + per-request threads exhausted
+        max_connections)."""
+        eng = fresh_engine(gate_enabled=False)
+        store = eng.store
+        baseline = store._pool.qsize()
+
+        # exercise every read/write path that borrows a connection
+        r = eng.add("我叫李雷，住在杭州，喜欢喝美式咖啡", user_id="leak")
+        eng.search("用户住哪", user_id="leak")
+        eng.get_all("leak")
+        eng.get_history(r.added[0])
+        eng.stats()
+        eng.render_context(user_id="leak", query="用户住哪")
+        eng.consolidate_background(user_id="leak")
+        eng.export_jsonl(user_id="leak", include_embeddings=True)
+
+        # all borrowed connections must be back in the pool
+        self.assertGreaterEqual(store._pool.qsize(), baseline,
+                                "pool lost connections (leak)")
+        eng.close()
+
     # ---- helper ---------------------------------------------------------------
     def tmpdir(self):
         import tempfile as _tf
