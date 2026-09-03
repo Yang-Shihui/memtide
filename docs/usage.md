@@ -194,7 +194,7 @@ Docker 栈或 `MEMTIDE_STATIC_DIR` 指向构建产物时：`http://localhost:830
 
 | 页面 | 能做什么 |
 |---|---|
-| 总览 | 记忆数量/事件分布/后端状态 |
+| 总览 | 记忆数量/类型与门控分布/事件分布/后端状态（每 15 秒自动刷新，后台 tab 暂停） |
 | 记忆库 | 列表、按作用域过滤、新建/编辑/软删/硬删；点详情看**审计时间线**（ADD→UPDATE→ACCESS 全链）与附件缩略图 |
 | 检索试玩 | 输入 query 看融合得分成分条（semantic/bm25/entity/retention） |
 | 核心记忆 | 预览实际注入 system prompt 的记忆块 |

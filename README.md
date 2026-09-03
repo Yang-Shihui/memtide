@@ -272,7 +272,7 @@ memtide/
 │   ├── config.py      # MemoryConfig（全部阈值可调）
 │   ├── server.py      # REST API（stdlib http.server，含 /media 素材服务）
 │   └── cli.py         # 命令行入口
-├── tests/test_memtide.py   # 77 个测试（hermetic 回归：全功能/性能路径/多模态/迁移/运维）+ 8 个 live 集成测试（真实端点含真实视觉，MEMTIDE_LIVE=1 门控）
+├── tests/test_memtide.py   # 89 个测试（hermetic 回归：全功能/性能路径/多模态/迁移/运维/连接池泄漏）+ 8 个 live 集成测试（真实端点含真实视觉，MEMTIDE_LIVE=1 门控）
 └── examples/
 ```
 
@@ -280,7 +280,7 @@ memtide/
 ## 测试
 
 ```bash
-python3 -m unittest tests.test_memtide   # 77 tests, PG/Qdrant + 本地协议服务器，无外部网络
+python3 -m unittest tests.test_memtide   # 89 tests, PG/Qdrant + 本地协议服务器，无外部网络
 ```
 
 ## License

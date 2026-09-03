@@ -254,10 +254,13 @@ attachments 列）、`entities`（name↔memory_id，实体检索通道）、
 ## 10. REST 服务（`server.py`）
 
 - 标准库 `ThreadingHTTPServer`；单引擎实例 + 统一引擎 RLock（REST/后台写入/auto-reflect 互斥）。
-  PG 每线程一连接（`threading.local`），无连接池依赖。
+  PG 用**有界连接池**（`queue.SimpleQueue` 借还，默认 max 20，零新依赖）：psycopg 连接非线程安全，
+  池保证并发下连接数恒定——绝不泄漏，耗尽抛干净的 `ConnectionLimitError` 而非 PG 的 "too many clients"。
 - 路由全覆盖（见 usage.md），`ValueError → 400`（非法时间戳/超限媒体/非法 compact threshold），
   兜底 `Exception → 500 JSON`（仅异常类型 + 前 200 字符，不泄露 DSN/路径），
   参数容错（垃圾 limit 回落默认值，越界钳制 1–500）。
+- **`/stats` 服务端聚合**：除计数外返回 `by_type`/`by_gate`（GROUP BY，毫秒级），
+  管理台总览直接消费，不必拉全量列表在前端数。
 - **鉴权**：设 `MEMTIDE_API_KEY` 后所有数据端点要求 `X-API-Key` 或
   `Bearer` 头（静态控制台保持公开以便输入 key）；不设 = 开放（开发默认）。
 - 静态托管：`/` 为官网落地页（landing.html，缺失时回退控制台），管理台在
@@ -273,9 +276,10 @@ attachments 列）、`entities`（name↔memory_id，实体检索通道）、
 
 ## 11. 测试策略
 
-- **Hermetic（86 个）**：本地 OpenAI 协议服务器 + 隔离 PG schema，~15s，无外部网络。
+- **Hermetic（89 个）**：本地 OpenAI 协议服务器 + 隔离 PG schema，~15s，无外部网络。
   覆盖写管线/检索/门控/反思/审计/REST/UI 托管/时间戳/多模态/旧库迁移/
-  性能路径（查询计数）/压实/媒体GC/导出导入/鉴权/调度器/槽归一/衰减分型/历次 bug 回归。
+  性能路径（查询计数）/压实/媒体GC/导出导入/鉴权/调度器/槽归一/衰减分型/
+  连接池不泄漏回归/历次 bug 回归。
 - **Live（8 个，MEMTIDE_LIVE=1 门控）**：真实 LLM + embedding + 视觉端点，
   验证真实语义相似度分布下的行为（阈值是按实测分布标定的）。
 - **E2E**：`scripts/live_check.py` 四步体检 + `scripts/seed_demo.py` 演示数据 +
