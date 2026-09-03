@@ -280,8 +280,9 @@ attachments 列）、`entities`（name↔memory_id，实体检索通道）、
   覆盖写管线/检索/门控/反思/审计/REST/UI 托管/时间戳/多模态/旧库迁移/
   性能路径（查询计数）/压实/媒体GC/导出导入/鉴权/调度器/槽归一/衰减分型/
   连接池不泄漏回归/历次 bug 回归。
-- **Live（8 个，MEMTIDE_LIVE=1 门控）**：真实 LLM + embedding + 视觉端点，
-  验证真实语义相似度分布下的行为（阈值是按实测分布标定的）。
+- **Live（14 个，MEMTIDE_LIVE=1 门控）**：真实 LLM + embedding + 视觉端点，
+  验证真实语义相似度分布下的行为（阈值是按实测分布标定的）；并覆盖别名过滤、
+  BM25 加分、并发写读、时间戳衰减、重建索引、MMR+查询扩展。
 - **E2E**：`scripts/live_check.py` 四步体检 + `scripts/seed_demo.py` 演示数据 +
   `scripts/calibrate_gate.py` 门控阈值标定。
 
