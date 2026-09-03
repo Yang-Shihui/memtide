@@ -41,9 +41,15 @@ class MemoryConfig:
     semantic_topk: int = 40              # Qdrant vector candidates
     bm25_topk: int = 40                  # PostgreSQL pg_search BM25 candidates
     rrf_k: int = 60                      # reciprocal-rank-fusion constant
+    # per-channel RRF weights: the loose entity channel counts less than the
+    # two main channels; expanded query variants count less than the original
+    entity_channel_weight: float = 0.5
+    expansion_variant_weight: float = 0.5
     weights: dict = field(default_factory=lambda: {
         "rrf": 1.0,
         "semantic": 0.15,   # raw cosine bonus on top of RRF
+        "bm25": 0.05,       # exact keyword-hit bonus (hit = 1.0 else 0.0)
+        "entity": 0.03,     # entity-hit bonus (hit = 1.0 else 0.0)
         "recency": 0.10,    # retention (Ebbinghaus) bonus
         "importance": 0.05,
     })
@@ -66,6 +72,10 @@ class MemoryConfig:
     half_life_days: float = 45.0         # base Ebbinghaus half-life
     reinforcement_gain: float = 0.4      # each access slows decay: hl *= 1+g*ln(1+n)
     retention_floor: float = 0.02        # below this a memory is "forgotten" (hidden)
+    max_half_life_mult: float = 4.0      # cap on the reinforcement stretch
+    # episodic memories fade faster and are forgotten sooner than facts
+    episodic_half_life_mult: float = 0.5
+    episodic_floor: float = 0.05
 
     # --- background consolidation (consolidation.py) --------------------------
     consolidation_min_cluster: int = 3   # smallest cluster worth distilling

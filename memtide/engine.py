@@ -485,15 +485,20 @@ class MemoryEngine:
             memories,
             key=lambda m: m.importance * (0.3 + 0.7 * retention(
                 m, cfg.half_life_days, cfg.reinforcement_gain,
-                consolidation_mult=cfg.consolidation_half_life_mult)),
+                consolidation_mult=cfg.consolidation_half_life_mult,
+                episodic_mult=cfg.episodic_half_life_mult,
+                max_mult=cfg.max_half_life_mult)),
             reverse=True,
         )
         for m in scored:
             if m.importance < 0.55:
                 continue
             if is_forgotten(m, cfg.half_life_days, cfg.reinforcement_gain,
-                            cfg.retention_floor,
-                            consolidation_mult=cfg.consolidation_half_life_mult):
+                             cfg.retention_floor,
+                             consolidation_mult=cfg.consolidation_half_life_mult,
+                             episodic_floor=cfg.episodic_floor,
+                             episodic_mult=cfg.episodic_half_life_mult,
+                             max_mult=cfg.max_half_life_mult):
                 continue  # forgotten memories never enter the core block
             line = f"- {m.text}"
             if len("\n".join(lines + [line])) > cfg.core_max_chars:

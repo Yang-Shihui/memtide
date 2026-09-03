@@ -38,10 +38,27 @@ Output STRICT JSON: {{"variants": ["...", "..."]}}
 Query: {query}"""
 
 
+# tokens that must never become entity keys (question words, pronouns, verbs)
+_CJK_STOP = frozenset({
+    "什么", "怎么", "为什么", "哪里", "哪个", "哪些", "多少", "是否", "如何",
+    "这些", "那些", "这个", "那个", "现在", "喜欢", "知道", "记得", "告诉",
+})
+_EN_STOP = frozenset({
+    "what", "where", "who", "when", "why", "how", "which", "my", "your",
+    "the", "a", "an", "is", "are", "do", "does", "tell", "know", "like",
+    "user", "users",
+})
+
+
 def _extract_query_entities(query: str) -> List[str]:
     import re
 
     ents: List[str] = []
+    # quoted spans first: highest-precision entity signal
+    for q in re.findall(r"[「『\"'\"'《【\[](.+?)[」』\"'\"'》】\]]", query):
+        q = q.strip()
+        if 1 < len(q) <= 20:
+            ents.append(q)
     m = re.search(r"[\u4e00-\u9fa5A-Za-z·]{1,15}(?:叫|名字是)([\u4e00-\u9fa5A-Za-z·]{1,15})", query)
     if m:
         ents.append(m.group(1))
@@ -50,16 +67,23 @@ def _extract_query_entities(query: str) -> List[str]:
         ents.append(m.group(1))
     # capitalized latin tokens (likely entities)
     ents.extend(t for t in re.findall(r"\b[A-Z][a-zA-Z]{2,}\b", query) if t not in {"The", "What", "Where", "Who", "My", "I"})
-    # CJK 2-4 char runs as loose entity keys
-    ents.extend(re.findall(r"[\u4e00-\u9fff]{2,4}", query))
+    # CJK 2-4 char runs as loose entity keys, minus stopwords
+    ents.extend(t for t in re.findall(r"[\u4e00-\u9fff]{2,4}", query) if t not in _CJK_STOP)
+    # lowercase latin tokens: only longer content words, minus stopwords
+    ents.extend(t for t in re.findall(r"\b[a-z]{4,}\b", query.lower())
+                if t not in _EN_STOP)
     return list(dict.fromkeys(ents))
 
 
-def _rrf(rankings: List[List[str]], k: int) -> Dict[str, float]:
+def _rrf(rankings: List[List[str]], k: int,
+         weights: Optional[List[float]] = None) -> Dict[str, float]:
+    """Weighted Reciprocal Rank Fusion. ``weights`` parallels ``rankings``;
+    omit for classic equal-weight RRF."""
     scores: Dict[str, float] = {}
-    for ranking in rankings:
+    for i, ranking in enumerate(rankings):
+        w = weights[i] if weights and i < len(weights) else 1.0
         for rank, mid in enumerate(ranking):
-            scores[mid] = scores.get(mid, 0.0) + 1.0 / (k + rank + 1)
+            scores[mid] = scores.get(mid, 0.0) + w / (k + rank + 1)
     return scores
 
 
@@ -141,24 +165,30 @@ class Retriever:
         limit = limit or cfg.final_topk
         qvec = self.embedder.embed(query)
 
-        # channel rankings for the query (+ expanded variants when enabled)
+        # channel rankings for the query (+ expanded variants when enabled).
+        # Entity is the loosest channel (CJK n-gram keys) so it fuses at a
+        # lower weight; expanded variants count less than the original query.
         rankings: List[List[str]] = []
+        chan_weights: List[float] = []
         sem_map: Dict[str, float] = {}
         bm25_hits: set = set()
         ent_hits: set = set()
         variants = [query]
         if cfg.query_expansion and not getattr(self, "_expansion_disabled", False) and self.llm is not None:
             variants = expand_query(query, self.llm)
+        vvecs = self.embedder.embed_batch(variants) if len(variants) > 1 else [qvec]
         for i, variant in enumerate(variants):
-            vvec = qvec if i == 0 else self.embedder.embed(variant)
+            var_w = 1.0 if i == 0 else cfg.expansion_variant_weight
+            vvec = vvecs[i] if i < len(vvecs) else qvec
             sem, bm25, ent_ids = self._channels(variant, vvec, user_id, agent_id, run_id)
             rankings += [[mid for mid, _ in sem], bm25, ent_ids]
+            chan_weights += [var_w, var_w, var_w * cfg.entity_channel_weight]
             bm25_hits.update(bm25)
             ent_hits.update(ent_ids)
             for mid, sim in sem:
                 sem_map[mid] = max(sem_map.get(mid, 0.0), sim)
 
-        fused = _rrf(rankings, cfg.rrf_k)
+        fused = _rrf(rankings, cfg.rrf_k, chan_weights)
         if not fused:
             return []
 
@@ -174,15 +204,24 @@ class Retriever:
                 # supersede): the relational store is authoritative.
                 continue
             ret = retention(mem, cfg.half_life_days, cfg.reinforcement_gain,
-                            consolidation_mult=cfg.consolidation_half_life_mult)
+                             consolidation_mult=cfg.consolidation_half_life_mult,
+                             episodic_mult=cfg.episodic_half_life_mult,
+                             max_mult=cfg.max_half_life_mult)
             if not include_forgotten and is_forgotten(
                     mem, cfg.half_life_days, cfg.reinforcement_gain,
-                    cfg.retention_floor, consolidation_mult=cfg.consolidation_half_life_mult):
+                    cfg.retention_floor, consolidation_mult=cfg.consolidation_half_life_mult,
+                    episodic_floor=cfg.episodic_floor,
+                    episodic_mult=cfg.episodic_half_life_mult,
+                    max_mult=cfg.max_half_life_mult):
                 continue
             sem_sim = sem_map.get(mid, 0.0)
+            bm25_hit = 1.0 if mid in bm25_hits else 0.0
+            ent_hit = 1.0 if mid in ent_hits else 0.0
             score = (
                 w["rrf"] * rrf_score
                 + w["semantic"] * sem_sim
+                + w.get("bm25", 0.0) * bm25_hit
+                + w.get("entity", 0.0) * ent_hit
                 + w["recency"] * ret
                 + w["importance"] * mem.importance
             )
@@ -192,8 +231,8 @@ class Retriever:
                 components={
                     "rrf": rrf_score,
                     "semantic": sem_sim,
-                    "bm25": 1.0 if mid in bm25_hits else 0.0,
-                    "entity": 1.0 if mid in ent_hits else 0.0,
+                    "bm25": bm25_hit,
+                    "entity": ent_hit,
                     "retention": ret,
                 },
             ))
@@ -208,7 +247,8 @@ class Retriever:
             if scores is not None:  # silent fallback keeps fused order on error
                 for r, s in zip(head, scores):
                     r.components["rerank"] = round(s, 4)
-                head.sort(key=lambda r: r.components["rerank"], reverse=True)
+                # rerank leads, fused score breaks ties (was rerank-only)
+                head.sort(key=lambda r: (r.components["rerank"], r.score), reverse=True)
                 results = head + results[len(head):]
 
         # post-fusion filters (types/slots stored on memories)
@@ -229,13 +269,17 @@ class Retriever:
 
     def _mmr(self, results: List[SearchResult], qvec: List[float],
              limit: int) -> List[SearchResult]:
-        """Greedy MMR: λ·score − (1−λ)·max cosine to already-selected items."""
+        """Greedy MMR: λ·score − (1−λ)·max cosine to already-selected items.
+
+        Scores (~0-0.2) are normalised by the pool max so λ actually blends
+        relevance vs diversity instead of letting cosine (0-1) dominate."""
         lam = self.cfg.mmr_lambda
         dim = self.cfg.embedding_dim
         # one batched fetch instead of a get_embedding roundtrip per item
         blobs = self.store.get_embeddings([r.memory.id for r in results])
         vecs: Dict[str, List[float]] = {
             mid: (unpack(blob, dim) or []) for mid, blob in blobs.items()}
+        smax = max((r.score for r in results), default=0.0) or 1.0
 
         def vec_of(r: SearchResult) -> List[float]:
             return vecs.get(r.memory.id) or []
@@ -247,7 +291,7 @@ class Retriever:
             for r in pool:
                 rv = vec_of(r)
                 max_sim = max((cosine(rv, vec_of(s)) for s in selected), default=0.0)
-                val = lam * r.score - (1 - lam) * max_sim
+                val = lam * (r.score / smax) - (1 - lam) * max_sim
                 if best_val is None or val > best_val:
                     best, best_val = r, val
             selected.append(best)

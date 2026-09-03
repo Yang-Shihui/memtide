@@ -1561,5 +1561,61 @@ class TestOptimizations(unittest.TestCase):
         return self._tmp.name
 
 
+class TestBatch3RetrievalDecay(unittest.TestCase):
+    """Batch-3: entity stopwords, weighted RRF, episodic decay, hl cap."""
+
+    def test_entity_stopwords_filtered(self):
+        from memtide.retrieval import _extract_query_entities
+
+        ents = _extract_query_entities("用户现在喜欢什么？告诉我")
+        for stop in ("什么", "现在", "喜欢", "告诉"):
+            self.assertNotIn(stop, ents)
+        # quoted spans still win as high-precision entities
+        self.assertIn("ProjX", _extract_query_entities('跟我说说"ProjX"的进展'))
+
+    def test_weighted_rrf_entity_counts_less(self):
+        from memtide.retrieval import _rrf
+
+        eq = _rrf([["a", "b"], ["b", "a"]], 60)
+        self.assertAlmostEqual(eq["a"], eq["b"])
+        w = _rrf([["a", "b"], ["b", "a"]], 60, [1.0, 0.5])
+        self.assertGreater(w["a"], w["b"])
+
+    def test_episodic_fades_faster_and_floor_higher(self):
+        from datetime import datetime, timedelta, timezone
+
+        from memtide.decay import is_forgotten, retention
+        from memtide.types import Memory
+
+        old = (datetime.now(timezone.utc) - timedelta(days=100)).isoformat()
+        fact = Memory(text="f", user_id="d", memory_type="fact",
+                      created_at=old, updated_at=old, valid_at=old)
+        epi = Memory(text="e", user_id="d", memory_type="episodic",
+                     created_at=old, updated_at=old, valid_at=old)
+        self.assertLess(retention(epi, 45, 0.4), retention(fact, 45, 0.4))
+        # episodic hits its higher floor first
+        self.assertTrue(is_forgotten(epi, 45, 0.4, 0.02, episodic_floor=0.99))
+        self.assertFalse(is_forgotten(fact, 45, 0.4, 0.02, episodic_floor=0.99))
+
+    def test_half_life_capped(self):
+        from memtide.decay import effective_half_life
+        from memtide.types import Memory
+
+        hot = Memory(text="h", user_id="d", access_count=10 ** 9)
+        self.assertLessEqual(effective_half_life(hot, 45, 0.4), 45 * 4.0)
+
+    def test_age_ignores_access_rejuvenation(self):
+        from datetime import datetime, timedelta, timezone
+
+        from memtide.decay import age_days
+        from memtide.types import Memory
+
+        old = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
+        m = Memory(text="m", user_id="d", created_at=old, updated_at=old,
+                   valid_at=old, last_accessed=now, access_count=5)
+        self.assertGreater(age_days(m), 29.0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
