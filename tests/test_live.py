@@ -146,6 +146,75 @@ class TestLiveEndpoints(unittest.TestCase):
         self.assertTrue(hits)
         self.assertTrue(any(h.memory.attachments for h in hits))
 
+    def test_9_slot_filter_matches_alias_live(self):
+        """search(slot='city') must hit memories stored with slot='location'."""
+        from memtide.types import Memory
+
+        uid = f"live-alias-{RUN}"
+        m = Memory(text="用户住在苏州", user_id=uid, metadata={"slot": "location"})
+        self.eng.store.insert(m, self.eng.retriever.embed_for_storage(m.text))
+        self.eng._index_upsert(m, self.eng.retriever.embed_for_storage(m.text))
+        hits = self.eng.search("用户住哪", user_id=uid, slot="city")
+        self.assertTrue(hits, "alias slot filter should match")
+        self.assertEqual(hits[0].memory.metadata.get("slot"), "location")
+
+    def test_10_bm25_bonus_ranks_exact_keyword_live(self):
+        """Exact-keyword memory should surface via the BM25 channel + bonus."""
+        uid = f"live-bm25-{RUN}"
+        self.eng.add("用户在西湖区工作", user_id=uid, infer=False)
+        self.eng.add("用户喜欢喝咖啡", user_id=uid, infer=False)
+        hits = self.eng.search("西湖区", user_id=uid, limit=2)
+        self.assertTrue(hits)
+        self.assertIn("西湖", hits[0].memory.text)
+        self.assertEqual(hits[0].components.get("bm25"), 1.0)
+
+    def test_11_concurrent_background_adds_live(self):
+        """Per-thread PG connections + unified lock under real backends."""
+        uid = f"live-race-{RUN}"
+        topics = ["喜欢喝美式咖啡", "住在杭州", "是后端工程师", "在学Rust",
+                  "每周跑步三次", "养了一只猫", "在看一本历史书", "周末去爬山"]
+        self.eng.cfg.gate_enabled = False  # under test: concurrency, not the gate
+        try:
+            futs = [self.eng.add_background(f"并发测试：用户{t}", user_id=uid,
+                                            infer=False) for t in topics]
+            for _ in range(50):
+                self.eng.get_all(uid)
+            results = [f.result(timeout=30) for f in futs]
+            self.assertTrue(all(r.added for r in results))
+            self.assertTrue(self.eng.get_all(uid, limit=100))
+        finally:
+            self.eng.cfg.gate_enabled = True
+
+    def test_12_old_timestamp_decays_live(self):
+        """A 2024 memory must show decayed retention on real embeddings."""
+        uid = f"live-decay-{RUN}"
+        self.eng.add("我喜欢喝美式咖啡", user_id=uid, timestamp="2024-01-01T00:00:00+00:00")
+        hits = self.eng.search("咖啡", user_id=uid, include_forgotten=True)
+        self.assertTrue(hits)
+        self.assertLess(hits[0].components["retention"], 0.5)
+
+    def test_13_rebuild_index_live(self):
+        uid = f"live-rebuild-{RUN}"
+        self.eng.add("我叫李雷", user_id=uid, infer=False)
+        self.eng.add("我住在杭州", user_id=uid, infer=False)
+        n = self.eng.rebuild_index()
+        self.assertGreaterEqual(n, 2)
+
+    def test_14_mmr_and_expansion_live(self):
+        """MMR + real-LLM query expansion must return results, not errors."""
+        uid = f"live-mmr-{RUN}"
+        self.eng.add("I work as a data engineer at Acme Corp", user_id=uid)
+        self.eng.add("用户喜欢喝美式咖啡", user_id=uid)
+        self.eng.cfg.mmr_lambda = 0.5
+        self.eng.cfg.query_expansion = True
+        try:
+            hits = self.eng.search("用户是做什么工作的", user_id=uid, limit=2)
+            self.assertTrue(hits)
+            self.assertLessEqual(len(hits), 2)
+        finally:
+            self.eng.cfg.mmr_lambda = 0.0
+            self.eng.cfg.query_expansion = False
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
