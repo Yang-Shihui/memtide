@@ -23,8 +23,9 @@ The management console is served at the ROOT (http://host:port/); /ui/* is
 kept as a legacy alias. When MEMTIDE_API_KEY is set, every API endpoint above
 requires the key via "X-API-Key" or "Authorization: Bearer".
 
-A single engine is shared across request threads behind a lock — operations
-are serialized by the engine lock, so concurrent requests are safe.
+A single engine is shared across request threads behind the ENGINE's lock
+(all routes hold it, so REST handlers, background adds and the
+auto-reflect loop are mutually exclusive).
 """
 
 from __future__ import annotations
@@ -62,7 +63,7 @@ def _safe_error(e: Exception) -> dict:
 
 class _State:
     engine: MemoryEngine
-    lock: threading.Lock
+    lock: threading.RLock
 
 
 def _static_dir() -> Path:
@@ -75,7 +76,10 @@ def _static_dir() -> Path:
 def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
     state = _State()
     state.engine = engine
-    state.lock = threading.Lock()
+    # One lock for everything: the engine's own RLock. A separate server lock
+    # would leave blind spots (background adds vs REST writes, direct store
+    # reads vs engine writes), so every route holds the same lock.
+    state.lock = engine._lock
     state.api_key = api_key
 
     class Handler(BaseHTTPRequestHandler):
@@ -134,11 +138,23 @@ def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
             return {k: params.get(k) or None for k in ("user_id", "agent_id", "run_id")}
 
         @staticmethod
-        def _int(value, default: int) -> int:
+        def _int(value, default: int, lo: int = 1, hi: int = 500) -> int:
             try:
-                return int(value)
+                return max(lo, min(hi, int(value)))
             except (TypeError, ValueError):
                 return default
+
+        @staticmethod
+        def _float(value, default: Optional[float], lo: float = 0.0, hi: float = 1.0) -> Optional[float]:
+            if value is None:
+                return default
+            try:
+                v = float(value)
+            except (TypeError, ValueError):
+                return None  # signals 400 to the caller
+            if not (lo <= v <= hi) or v != v:  # NaN fails the range check
+                return None
+            return v
 
         # ---- routes -------------------------------------------------------
         def do_POST(self):
@@ -211,12 +227,15 @@ def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
                     state.engine.reset()
                 return self._json(200, {"ok": True})
             if path == "/compact":
+                threshold = self._float(body.get("threshold"), None)
+                if body.get("threshold") is not None and threshold is None:
+                    return self._json(400, {"error": "threshold must be a number in [0, 1]"})
                 with state.lock:
                     report = state.engine.compact(
                         user_id=body.get("user_id") or "default",
                         agent_id=body.get("agent_id"),
                         run_id=body.get("run_id"),
-                        threshold=body.get("threshold"),
+                        threshold=threshold,
                     )
                 return self._json(200, report)
             if path == "/media/gc":

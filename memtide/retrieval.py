@@ -127,8 +127,10 @@ class Retriever:
         ent_ids = self.store.entity_lookup(ents, user_id=user_id, agent_id=agent_id,
                                            run_id=run_id) if ents else []
         # drop entity hits that don't actually contain the string (CJK 2-4 char keys are loose)
-        ent_ids = [mid for mid in ent_ids
-                   if (mem := self.store.get(mid)) and any(e.lower() in mem.text.lower() for e in ents)]
+        if ent_ids:
+            by_id = self.store.get_many(ent_ids)
+            ent_ids = [mid for mid in ent_ids
+                       if (mem := by_id.get(mid)) and any(e.lower() in mem.text.lower() for e in ents)]
         return sem, bm25, ent_ids
 
     def search(self, query: str, user_id: Optional[str] = None, agent_id: Optional[str] = None,
@@ -162,9 +164,14 @@ class Retriever:
 
         w = cfg.weights
         results: List[SearchResult] = []
+        by_id = self.store.get_many(fused.keys())
         for mid, rrf_score in fused.items():
-            mem = self.store.get(mid)
+            mem = by_id.get(mid)
             if mem is None:
+                continue
+            if mem.invalid_at is not None:
+                # Stale index point (vector delete lagging a soft-delete /
+                # supersede): the relational store is authoritative.
                 continue
             ret = retention(mem, cfg.half_life_days, cfg.reinforcement_gain,
                             consolidation_mult=cfg.consolidation_half_life_mult)
@@ -224,14 +231,14 @@ class Retriever:
              limit: int) -> List[SearchResult]:
         """Greedy MMR: λ·score − (1−λ)·max cosine to already-selected items."""
         lam = self.cfg.mmr_lambda
-        vecs: Dict[str, List[float]] = {}
         dim = self.cfg.embedding_dim
+        # one batched fetch instead of a get_embedding roundtrip per item
+        blobs = self.store.get_embeddings([r.memory.id for r in results])
+        vecs: Dict[str, List[float]] = {
+            mid: (unpack(blob, dim) or []) for mid, blob in blobs.items()}
 
         def vec_of(r: SearchResult) -> List[float]:
-            if r.memory.id not in vecs:
-                vecs[r.memory.id] = unpack(
-                    self.store.get_embedding(r.memory.id), dim) or []
-            return vecs[r.memory.id]
+            return vecs.get(r.memory.id) or []
 
         pool = list(results)
         selected = [pool.pop(0)]

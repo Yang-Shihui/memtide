@@ -411,13 +411,20 @@ class MemoryEngine:
 
     @_locked
     def delete(self, memory_id: str, hard: bool = False) -> bool:
+        # PG-first dual-write order (matches add/update): the relational store
+        # is the source of truth; the vector index is rebuilt from it. A crash
+        # between the two steps then leaves at worst a stale readable point
+        # (filtered by store.get) — never a PG row invisible to search.
         if self.store.get(memory_id) is None:
             return False
-        self.vector_store.delete(memory_id)
         if hard:
             self.store.hard_delete(memory_id)
         else:
             self.store.soft_delete(memory_id)  # keep for temporal audit
+        # Index second and fail loud: soft-deleted rows are filtered out of
+        # search via index removal (store.get still returns them), so a failed
+        # vector delete must surface — run rebuild_index() to reconcile.
+        self.vector_store.delete(memory_id)
         return True
 
     # ------------------------------------------------------------ vector index
@@ -458,8 +465,10 @@ class MemoryEngine:
         n = len(points)
         if hasattr(self.vector_store, "count"):
             actual = self.vector_store.count()
-            if actual < n:
-                raise RuntimeError(f"Qdrant rebuild incomplete: expected {n} points, got {actual}")
+            if actual != n:
+                raise RuntimeError(
+                    f"Qdrant rebuild mismatch: expected {n} points, got {actual} "
+                    "(fewer = lost writes, more = stale dirty points)")
         return n
 
     # ------------------------------------------------------- context rendering
@@ -645,6 +654,8 @@ class MemoryEngine:
 
         rows = self.store.all_rows(user_id, agent_id, run_id,
                                    include_invalid=include_invalid)
+        blobs = (self.store.get_embeddings([m.id for m in rows])
+                 if include_embeddings else {})
         lines = []
         for m in rows:
             d = m.to_dict()
@@ -652,7 +663,7 @@ class MemoryEngine:
             d["access_count"] = m.access_count
             d["last_accessed"] = m.last_accessed
             if include_embeddings:
-                blob = self.store.get_embedding(m.id)
+                blob = blobs.get(m.id)
                 if blob:
                     d["embedding_b64"] = base64.b64encode(blob).decode()
             lines.append(json.dumps(d, ensure_ascii=False))
@@ -715,9 +726,8 @@ class MemoryEngine:
     # ------------------------------------------------------------ background
     def add_background(self, *args, **kwargs):
         """add() on a small internal thread pool; returns a Future (stdlib
-        concurrent.futures). Use for latency-sensitive agents — note it does
-        NOT share the REST server's lock, so avoid mixing with concurrent
-        REST writes."""
+        concurrent.futures). Use for latency-sensitive agents — shares the
+        engine lock with REST writes, so it is mutually exclusive with them."""
         from concurrent.futures import ThreadPoolExecutor
 
         if self._pool is None:

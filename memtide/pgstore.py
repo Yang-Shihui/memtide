@@ -64,13 +64,22 @@ CREATE INDEX IF NOT EXISTS idx_ent_name ON entities(name);
 class PostgresStorage(StorageBase):
     def __init__(self, dsn: str):
         try:
+            import threading
+
             import psycopg
             from psycopg.rows import dict_row
         except ImportError as e:  # pragma: no cover
             raise ImportError(
                 'PostgreSQL backend needs psycopg: pip install .'
             ) from e
-        self.conn = psycopg.connect(dsn, row_factory=dict_row, autocommit=True)
+        self._dsn = dsn
+        self._row_factory = dict_row
+        # psycopg connections are NOT thread-safe: one connection per thread
+        # (stdlib threading.local, zero new deps). All call sites keep using
+        # self.conn — it now resolves to the calling thread's connection.
+        self._local = threading.local()
+        self._conns_lock = threading.Lock()
+        self._conns: set = set()
         # SCHEMA public anchors extensions there: test runs point search_path
         # at a temp schema and must not relocate (or CASCADE-drop) shared
         # extensions when the temp schema is dropped
@@ -88,6 +97,20 @@ class PostgresStorage(StorageBase):
         self.conn.execute(
             "ALTER TABLE memories ADD COLUMN IF NOT EXISTS attachments TEXT NOT NULL DEFAULT '[]'"
         )
+
+    @property
+    def conn(self):
+        """Calling thread's connection, created on demand."""
+        import psycopg
+
+        c = getattr(self._local, "conn", None)
+        if c is None or c.closed:
+            c = psycopg.connect(self._dsn, row_factory=self._row_factory,
+                                autocommit=True)
+            self._local.conn = c
+            with self._conns_lock:
+                self._conns.add(c)
+        return c
 
     # ---- writes --------------------------------------------------------------
     def insert(self, mem: Memory, embedding: bytes) -> None:
@@ -184,15 +207,23 @@ class PostgresStorage(StorageBase):
             self.log_event(mem_id, Event.CONSOLIDATE, row["text"], by_id)
 
     def mark_accessed(self, mem_ids: Iterable[str]) -> None:
+        ids = list(dict.fromkeys(mem_ids))
+        if not ids:
+            return
         now = utcnow()
         with self.conn.transaction():
-            for mid in mem_ids:
-                self.conn.execute(
-                    """UPDATE memories SET access_count = access_count + 1,
-                           last_accessed = %s WHERE id = %s""",
-                    (now, mid),
+            # single UPDATE for all hits (was one UPDATE + one INSERT per hit)
+            self.conn.execute(
+                """UPDATE memories SET access_count = access_count + 1,
+                       last_accessed = %s WHERE id = ANY(%s)""",
+                (now, ids),
+            )
+            with self.conn.cursor() as cur:
+                cur.executemany(
+                    "INSERT INTO memory_history (memory_id, event, prev_value, new_value, created_at)"
+                    " VALUES (%s, 'ACCESS', NULL, NULL, %s)",
+                    [(mid, now) for mid in ids],
                 )
-                self.log_event(mid, Event.ACCESS, None, None)
 
     def log_event(self, memory_id: str, event: str, prev: Optional[str],
                   new: Optional[str], at: Optional[str] = None) -> None:
@@ -211,6 +242,14 @@ class PostgresStorage(StorageBase):
         row = self.get_raw(mem_id)
         return self._to_memory(row) if row else None
 
+    def get_many(self, mem_ids: Iterable[str]) -> Dict[str, Memory]:
+        ids = list(dict.fromkeys(mem_ids))
+        if not ids:
+            return {}
+        rows = self.conn.execute(
+            "SELECT * FROM memories WHERE id = ANY(%s)", (ids,))
+        return {r["id"]: self._to_memory(r) for r in rows}
+
     def get_embedding(self, mem_id: str) -> Optional[bytes]:
         row = self.conn.execute(
             "SELECT embedding FROM memories WHERE id = %s", (mem_id,)
@@ -218,6 +257,17 @@ class PostgresStorage(StorageBase):
         if row is None or row["embedding"] is None:
             return None
         return bytes(row["embedding"])
+
+    def get_embeddings(self, mem_ids: Iterable[str]) -> Dict[str, bytes]:
+        ids = list(dict.fromkeys(mem_ids))
+        if not ids:
+            return {}
+        out: Dict[str, bytes] = {}
+        for r in self.conn.execute(
+                "SELECT id, embedding FROM memories WHERE id = ANY(%s)", (ids,)):
+            if r["embedding"] is not None:
+                out[r["id"]] = bytes(r["embedding"])
+        return out
 
     def all_valid(self, user_id: Optional[str] = None, agent_id: Optional[str] = None,
                   run_id: Optional[str] = None) -> List[Memory]:
@@ -390,4 +440,11 @@ class PostgresStorage(StorageBase):
         self.conn.execute("TRUNCATE memories, memory_history, entities")
 
     def close(self) -> None:
-        self.conn.close()
+        with self._conns_lock:
+            conns = list(self._conns)
+            self._conns.clear()
+        for c in conns:
+            try:
+                c.close()
+            except Exception:
+                pass

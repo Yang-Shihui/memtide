@@ -32,7 +32,23 @@ class StorageBase:
                   at: Optional[str] = None) -> None: ...
     def get_raw(self, mem_id: str) -> Optional[Any]: ...
     def get(self, mem_id: str) -> Optional[Memory]: ...
+    def get_many(self, mem_ids: Iterable[str]) -> Dict[str, Memory]:
+        """Batch get: one roundtrip for many ids (default loops get)."""
+        out: Dict[str, Memory] = {}
+        for mid in mem_ids:
+            mem = self.get(mid)
+            if mem is not None:
+                out[mid] = mem
+        return out
     def get_embedding(self, mem_id: str) -> Optional[bytes]: ...
+    def get_embeddings(self, mem_ids: Iterable[str]) -> Dict[str, bytes]:
+        """Batch embeddings: one roundtrip for many ids (default loops)."""
+        out: Dict[str, bytes] = {}
+        for mid in mem_ids:
+            blob = self.get_embedding(mid)
+            if blob is not None:
+                out[mid] = blob
+        return out
     def all_valid(self, user_id: Optional[str] = None, agent_id: Optional[str] = None,
                   run_id: Optional[str] = None) -> List[Memory]: ...
     def all_embeddings(self, user_id: Optional[str] = None, agent_id: Optional[str] = None,

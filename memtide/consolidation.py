@@ -79,8 +79,9 @@ def consolidate(engine, user_id: str = "default", agent_id: Optional[str] = None
         return {"clusters": 0, "summaries": [], "members_absorbed": 0}
 
     vectors = {}
+    blobs = engine.store.get_embeddings([m.id for m in memories])
     for m in memories:
-        vec = unpack(engine.store.get_embedding(m.id), cfg.embedding_dim)
+        vec = unpack(blobs.get(m.id), cfg.embedding_dim)
         if vec is not None:
             vectors[m.id] = vec
     memories = [m for m in memories if m.id in vectors]
@@ -118,9 +119,9 @@ def consolidate(engine, user_id: str = "default", agent_id: Optional[str] = None
             importance=min(0.95, max(m.importance for m in group) + 0.05),
             source="consolidation",
         )
-        engine.store.insert(summary, pack(engine.embedder.embed(summary_text)))
+        engine.store.insert(summary, pack(summary_vec := engine.embedder.embed(summary_text)))
         engine.vector_store.upsert(
-            summary.id, engine.embedder.embed(summary_text),
+            summary.id, summary_vec,
             {"memory_id": summary.id, "user_id": user_id,
              "agent_id": agent_id, "run_id": run_id})
         for m in group:
