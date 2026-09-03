@@ -78,7 +78,7 @@ class TestLiveEndpoints(unittest.TestCase):
         r = self.eng.add("我转行做产品经理了", user_id=self.users["slot"])
         self.assertEqual(len(r.updated), 1, r.to_dict())
         self.assertFalse(any("后端" in m.text or "backend" in m.text.lower()
-                             for m in self.eng.get_all("live4")))
+                             for m in self.eng.get_all(self.users["slot"])))
 
     def test_5_consolidation_with_llm(self):
         # infer=False seeds the cluster deterministically (LLM extraction
@@ -91,7 +91,7 @@ class TestLiveEndpoints(unittest.TestCase):
         self.assertGreaterEqual(rep["members_absorbed"], 3)
         self.assertIn("Rust", rep["summaries"][0]["text"])
         # originals superseded, bank shrank to summary (+ any off-topic leftovers)
-        self.assertLessEqual(len(self.eng.get_all("live5")), 2)
+        self.assertLessEqual(len(self.eng.get_all(self.users["consolidate"])), 2)
 
     def test_6_audit_chain(self):
         r = self.eng.add("我叫王小明", user_id=self.users["audit"])
