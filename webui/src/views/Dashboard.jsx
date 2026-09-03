@@ -103,9 +103,15 @@ export default function Dashboard({ view }) {
   const [err, setErr] = useState("");
 
   useEffect(() => {
-    Promise.all([api.stats(), api.list({ limit: 500 }), api.history(null, 10)])
-      .then(([s, m, h]) => { setStats(s); setMems(m); setRecent(h); })
-      .catch((e) => setErr(e.message));
+    let alive = true;
+    const load = () => {
+      Promise.all([api.stats(), api.list({ limit: 500 }), api.history(null, 10)])
+        .then(([s, m, h]) => { if (alive) { setStats(s); setMems(m); setRecent(h); } })
+        .catch((e) => { if (alive) setErr(e.message); });
+    };
+    load();
+    const timer = setInterval(load, 5000);  // near-realtime overview
+    return () => { alive = false; clearInterval(timer); };
   }, []);
 
   if (err) return <div className="err">{err}</div>;
