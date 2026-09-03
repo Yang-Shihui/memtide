@@ -108,13 +108,29 @@ def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
             self._json(401, {"error": "missing or invalid API key "
                                       "(X-API-Key header or Authorization: Bearer)"})
 
+        def _send(self, code: int, headers: dict, body: bytes) -> None:
+            """Send a full response, swallowing client-abort noise (browser
+            closing a tab / cancelling a poll mid-write raises
+            BrokenPipeError — log spam, not a server fault)."""
+            try:
+                self.send_response(code)
+                for k, v in headers.items():
+                    self.send_header(k, v)
+                self.end_headers()
+                self._write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+        def _write(self, body: bytes) -> None:
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
         def _json(self, code: int, payload) -> None:
             body = json.dumps(payload, ensure_ascii=False).encode()
-            self.send_response(code)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self._send(code, {"Content-Type": "application/json; charset=utf-8",
+                              "Content-Length": str(len(body))}, body)
 
         def _body(self) -> dict:
             try:
@@ -292,11 +308,8 @@ def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
                         return self._json(404, {"error": "UI not built; run webui build"})
             ctype = mimetypes.guess_type(str(file))[0] or "application/octet-stream"
             body = file.read_bytes()
-            self.send_response(200)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self._send(200, {"Content-Type": ctype,
+                             "Content-Length": str(len(body))}, body)
 
         def _serve_media(self, name: str) -> None:
             """Serve a content-addressed media asset by sha256 (immutable)."""
@@ -309,12 +322,10 @@ def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
             ctype = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
             with open(file_path, "rb") as f:
                 body = f.read()
-            self.send_response(200)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
-            self.end_headers()
-            self.wfile.write(body)
+            self._send(200, {"Content-Type": ctype,
+                             "Content-Length": str(len(body)),
+                             "Cache-Control": "public, max-age=31536000, immutable"},
+                       body)
 
         def _route_do_GET(self):
             url = urlparse(self.path)
@@ -370,13 +381,11 @@ def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
                         include_embeddings=params.get("embeddings", "true").lower() != "false",
                     )
                 body = ("\n".join(lines) + ("\n" if lines else "")).encode()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+                headers = {"Content-Type": "application/x-ndjson; charset=utf-8",
+                           "Content-Length": str(len(body))}
                 if params.get("download") is not None:
-                    self.send_header("Content-Disposition", 'attachment; filename="memtide-export.jsonl"')
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
+                    headers["Content-Disposition"] = 'attachment; filename="memtide-export.jsonl"'
+                self._send(200, headers, body)
                 return
             if path == "/stats":
                 with state.lock:
