@@ -1604,6 +1604,26 @@ class TestBatch3RetrievalDecay(unittest.TestCase):
         hot = Memory(text="h", user_id="d", access_count=10 ** 9)
         self.assertLessEqual(effective_half_life(hot, 45, 0.4), 45 * 4.0)
 
+    def test_slot_filter_matches_alias(self):
+        from memtide.types import Memory
+
+        eng = fresh_engine()
+        m = Memory(text="用户住在苏州", user_id="al", metadata={"slot": "location"})
+        eng.store.insert(m, eng.retriever.embed_for_storage(m.text))
+        self.assertTrue(eng.search("用户住哪", user_id="al", slot="city"))
+        eng.close()
+
+    def test_render_context_preview_does_not_reinforce(self):
+        eng = fresh_engine()
+        eng.add("我叫李雷，住在杭州", user_id="nr")
+        total = lambda: sum(m.access_count for m in eng.get_all("nr", limit=100))
+        before = total()
+        eng.render_context(user_id="nr", query="用户住哪")
+        self.assertEqual(total(), before)
+        eng.search("用户住哪", user_id="nr")  # normal search still reinforces
+        self.assertGreater(total(), before)
+        eng.close()
+
     def test_age_ignores_access_rejuvenation(self):
         from datetime import datetime, timedelta, timezone
 

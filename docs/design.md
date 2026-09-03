@@ -96,14 +96,16 @@ Mem0 / MemOS / M3-Agent 三条路线里选择 Mem0 式"**写入时媒体→文�
   抽取（模板/类型/重要度/slot），确定性输出——hermetic 测试的基石；引擎
   本体只讲真实协议。
 - 两条路径同一契约（`BaseLLM.complete_json`），可整体替换。
-- `slot` 标记易变属性（name/location/role/employer/age/stack/plan），供冲突消解用。
+- `slot` 为开放 hint（`slots.py`）：建议 7 槽（name/location/role/employer/age/stack/plan）仅作示例，
+  LLM 可发明新槽（如 spouse/pet）；`SLOT_ALIASES` 别名表归一同物异名（city/住址→location），
+  非法值归 `None`；多值事实（喜好、技能列表）用 `null`，永不强制 UPDATE。
 
 ### 3.3 预测编码门控（`gating.py`）
 
 记忆库即生成式先验：新事实按预测误差 S = -log2 p̂ 分流。**slot 范围先验**
-（`gate_slot_scoped=True` 默认开）：带 slot 的事实（location/role/…）只在
-**同 slot 记忆**上取预测相似度——"用户住在X"不会被句式相似的"用户工作在Y"
-抬高预测度；无同 slot 先验的新属性自然落入 NOVEL（新属性=意外）。
+（`gate_slot_scoped=True` 默认开）：带 slot 的事实只在**同义 slot 记忆**
+（经 `same_slot` + `slot_aliases` 判定，city == location）上取预测相似度——
+"用户住在X"不会被句式相似的"用户工作在Y"抬高预测度；无同 slot 先验的新属性自然落入 NOVEL（新属性=意外）。
 
 | S | 决策 | 语义 |
 |---|---|---|
@@ -111,20 +113,23 @@ Mem0 / MemOS / M3-Agent 三条路线里选择 Mem0 式"**写入时媒体→文�
 | 中间 | INTEGRATE | 正常编码 |
 | ≥ 2.5 bits | NOVEL | 越意外越重要，importance +0.10 |
 
-易变属性冲突（同 slot 新值）强制写入。阈值依赖 embedding 分布，换模型后跑
+同义 slot 冲突（规范化后相同 + 相似度 ≥ `gate_slot_floor` 0.40 + 文本不同）强制写入
+（volatile-update）。阈值依赖 embedding 分布，换模型后跑
 `scripts/calibrate_gate.py` 重新标定。数学推导见
 [predictive-coding-gate.md](predictive-coding-gate.md)。
 
 ### 3.4 冲突消解
 
-对每个候选事实，取相似度 ≥ 阈值的既有记忆（同 slot 冲突可降低门槛），交给：
+对每个候选事实，取相似度 ≥ 阈值的既有记忆（同义 slot 冲突降到 `gate_slot_floor` 门槛），交给：
 
 - **LLM 决策**：`CONSOLIDATION_PROMPT` 输出每候选 NOOP/UPDATE/DELETE；
-  提示词强调"措辞不同但同义 = NOOP"防止重复膨胀。**批量优化**：一次
+  提示词强调"措辞不同但同义 = NOOP"防止重复膨胀；slot 只是 hint——多值事实
+  （两套房、Rust+Python）与时间限定事实（去年 vs 今年）即使 slot 相同也应 ADD。
+  **批量优化**：一次
   `add()` 的全部事实合并进 `CONSOLIDATION_BATCH_PROMPT`，单次 LLM 调用
   完成整轮消解（解析失败自动回退逐条），写延迟与 token 成本大幅下降。
 - **测试夹具**：`tests/fake_openai.py` 里的 `consolidate_rules()` 用余弦带 +
-  极性检测（喜欢↔不喜欢）+ volatile slot 冲突三类信号，与 LLM 契约一致。
+  极性检测（喜欢↔不喜欢）+ 同槽信号（三类）+ `sim≥0.35` 底线，与 LLM 契约一致。
 
 决策执行：UPDATE = `replace_text`（旧值进审计）；DELETE = 软删除；
 NOOP/UPDATE 消费掉新事实；否则 ADD 新记忆。相同表述重复写入被 NOOP 吸收，
@@ -151,25 +156,28 @@ Zep 式"失效不删除"，历史可回放。
    中文用 ngram tokenizer（min 2-gram）免外部分词器，中英可查
 3. **实体**：实体表 LIKE 匹配 + 文本二次校验（防 CJK 宽松键误召回）
 
-**RRF 融合**：`score_rrf = Σ 1/(k + rank)`，k=60——只用排名不用分数，
-天然规避三路分数量纲不一。
+**RRF 融合**：加权 `score_rrf = Σ w/(k + rank)`，k=60——只用排名不用分数，
+天然规避三路分数量纲不一。实体通道较宽松计 `×0.5`，查询扩展变体计 `×0.5`
+（`entity_channel_weight` / `expansion_variant_weight`）。
 
-**重排**：`final = 1.0·rrf + 0.15·cosine + 0.10·retention + 0.05·importance`。
-每个命中的 components 字典完整暴露四项得分（UI 可视化成条形图）。
+**重排**：`final = 1.0·rrf + 0.15·cosine + 0.05·bm25 + 0.03·entity + 0.10·retention + 0.05·importance`。
+每个命中的 components 字典完整暴露六项得分（+可选 rerank，UI 可视化成条形图）。
 
 **可选质量层**（默认全关，配置启用，不改变默认行为）：
 
 - **type/slot 过滤**：`search(memory_type=, slot=)` 融合后过滤——把已存的
-  分类维度用于检索（如只查偏好、只查 location 事实）
+  分类维度用于检索（如只查偏好、只查 location 事实）；slot 过滤先经别名归一，
+  `slot="city"` 也能命中 `location` 记忆
 - **查询扩展**（`query_expansion`，仅真实 LLM）：检索前一次 LLM 调用产出
-  英译 + 改写两个变体，多路召回后融合——跨语言查询（中文 query 对英文
+  英译 + 改写两个变体，多路召回后融合（变体 `embed_batch` 一次调用，融合权重减半）——跨语言查询（中文 query 对英文
   事实）的主要补救
 - **cross-encoder 重排**（`rerank_backend="http"`）：融合 top-N 送 Jina/Cohere
-  风格 POST /rerank 精排，失败静默回退融合序
-- **MMR 多样性**（`mmr_lambda`）：最终 top-k 兼顾得分与相互差异
+  风格 POST /rerank 精排，rerank 分主导、融合分断并列，失败静默回退融合序
+- **MMR 多样性**（`mmr_lambda`）：得分先按池内最大归一再与差异度混合，最终 top-k 兼顾得分与相互差异
 
 **检索强化**：命中即 `access_count++` 并记 ACCESS 事件——访问越多，
-遗忘曲线半衰期越长（见 §5），模拟间隔效应。
+遗忘曲线半衰期越长（见 §5），模拟间隔效应。`render_context(query=)` 的预览
+检索用 `reinforce=False`，只读不污染计数。
 
 **写入路径性能**：相似度扫描走 `store.all_embeddings()` 单查询（一条 SQL
 各一条 SQL），一次 `add()` 全部事实共享，候选只取 top-K 水合成 Memory
@@ -179,10 +187,12 @@ API 批量接口单次调用带多个文本。
 
 ## 5. 遗忘与巩固
 
-- **留存度**（`decay.py`）：`retention = 0.5^(age / (half_life × (1 + 0.4·ln(1+access_count))))`。
+- **留存度**（`decay.py`）：`retention = 0.5^(age / (half_life × min(1 + 0.4·ln(1+access_count), 4.0)))`，
+  年龄从 `valid_at/created_at` 起算——访问拉长半衰期但不再回春，热门记忆也不会永生。
+  **分型衰减**：episodic 半衰期 ×0.5（`episodic_half_life_mult`）、遗忘线 0.05（`episodic_floor`）。
   **概括记忆抗衰**：`source="consolidation"` 的记忆有效半衰期 ×3
   （`consolidation_half_life_mult`）——抽象层比细节忘得慢，防止概括先于其
-  成员淡忘。低于 `retention_floor`（0.02）视为"遗忘"：默认检索不再浮现，
+  成员淡忘。低于遗忘线（fact 0.02 / episodic 0.05）视为"遗忘"：默认检索不再浮现，
   但数据仍在库中，可复忆。软性遗忘而非删除——删除只发生在显式 delete 或
   冲突消解。
 - **后台反思**（`consolidation.py`，LangMem 式）：`consolidate_background()`
@@ -243,9 +253,11 @@ attachments 列）、`entities`（name↔memory_id，实体检索通道）、
 
 ## 10. REST 服务（`server.py`）
 
-- 标准库 `ThreadingHTTPServer`；单引擎实例 + 全局锁串行化（操作均为毫秒级）。
-- 路由全覆盖（见 usage.md），`ValueError → 400`（非法时间戳/超限媒体），
-  兜底 `Exception → 500 JSON`，参数容错（垃圾 limit 回落默认值）。
+- 标准库 `ThreadingHTTPServer`；单引擎实例 + 统一引擎 RLock（REST/后台写入/auto-reflect 互斥）。
+  PG 每线程一连接（`threading.local`），无连接池依赖。
+- 路由全覆盖（见 usage.md），`ValueError → 400`（非法时间戳/超限媒体/非法 compact threshold），
+  兜底 `Exception → 500 JSON`（仅异常类型 + 前 200 字符，不泄露 DSN/路径），
+  参数容错（垃圾 limit 回落默认值，越界钳制 1–500）。
 - **鉴权**：设 `MEMTIDE_API_KEY` 后所有数据端点要求 `X-API-Key` 或
   `Bearer` 头（静态控制台保持公开以便输入 key）；不设 = 开放（开发默认）。
 - 静态托管：`/` 为官网落地页（landing.html，缺失时回退控制台），管理台在
@@ -261,9 +273,9 @@ attachments 列）、`entities`（name↔memory_id，实体检索通道）、
 
 ## 11. 测试策略
 
-- **Hermetic（77 个）**：本地 OpenAI 协议服务器 + 隔离 PG schema，~15s，无外部网络。
+- **Hermetic（86 个）**：本地 OpenAI 协议服务器 + 隔离 PG schema，~15s，无外部网络。
   覆盖写管线/检索/门控/反思/审计/REST/UI 托管/时间戳/多模态/旧库迁移/
-  性能路径（查询计数）/压实/媒体GC/导出导入/鉴权/调度器/历次 bug 回归。
+  性能路径（查询计数）/压实/媒体GC/导出导入/鉴权/调度器/槽归一/衰减分型/历次 bug 回归。
 - **Live（8 个，MEMTIDE_LIVE=1 门控）**：真实 LLM + embedding + 视觉端点，
   验证真实语义相似度分布下的行为（阈值是按实测分布标定的）。
 - **E2E**：`scripts/live_check.py` 四步体检 + `scripts/seed_demo.py` 演示数据 +

@@ -376,15 +376,18 @@ class MemoryEngine:
     def search(self, query: str, user_id: Optional[str] = None, agent_id: Optional[str] = None,
                run_id: Optional[str] = None, limit: int = 10,
                include_forgotten: bool = False, memory_type: Optional[str] = None,
-               slot: Optional[str] = None) -> List[SearchResult]:
+               slot: Optional[str] = None, reinforce: bool = True) -> List[SearchResult]:
         """Hybrid retrieval; every hit's access_count grows (reinforcement).
 
         ``memory_type``/``slot``: optional post-fusion filters (e.g. only
-        "preference" memories, or only slot="location" facts)."""
+        "preference" memories, or only slot="location" facts).
+        ``reinforce=False``: read-only recall without the access_count bump
+        (used by render_context previews)."""
         return self.retriever.search(query, user_id=user_id, agent_id=agent_id,
                                      run_id=run_id, limit=limit,
                                      include_forgotten=include_forgotten,
-                                     memory_type=memory_type, slot=slot)
+                                     memory_type=memory_type, slot=slot,
+                                     reinforce=reinforce)
 
     @_locked
     def get(self, memory_id: str) -> Optional[Memory]:
@@ -507,7 +510,8 @@ class MemoryEngine:
 
         block = "## Memory\n" + ("\n".join(lines) if lines else "(no long-term memories yet)")
         if query:
-            hits = self.search(query, user_id=user_id, agent_id=agent_id, limit=5)
+            hits = self.search(query, user_id=user_id, agent_id=agent_id, limit=5,
+                               reinforce=False)  # preview must not reinforce
             if hits:
                 rel = "\n".join(f"- {h.memory.text}" for h in hits)
                 block += "\n\n## Relevant to current query\n" + rel

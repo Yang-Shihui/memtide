@@ -28,6 +28,7 @@ memtide/
 │   ├── embeddings.py       #   OpenAI / DashScope embedder + auto + 缓存
 │   ├── retrieval.py        #   三路召回 + RRF + 重排（components 可解释）
 │   ├── gating.py           #   预测编码门控：surprise 三分流
+│   ├── slots.py            #   开放 slot 归一：别名表 + canonicalize/same_slot
 │   ├── consolidation.py    #   后台反思：聚类→概括→supersede
 │   ├── decay.py            #   Ebbinghaus 留存度 + 检索强化
 │   ├── storage.py          #   StorageBase 契约（PostgreSQL 唯一后端）
@@ -53,7 +54,7 @@ memtide/
 
 | 套件 | 内容 | 运行 |
 |---|---|---|
-| hermetic（77 个） | 全功能回归 + 性能路径（查询计数）+ 历次 bug 回归；本地 OpenAI 协议服务器 + 独立 PG schema，无外部网络 | `python -m unittest tests.test_memtide` |
+| hermetic（86 个） | 全功能回归 + 性能路径（查询计数）+ 历次 bug 回归；本地 OpenAI 协议服务器 + 独立 PG schema，无外部网络 | `python -m unittest tests.test_memtide` |
 | live（8 个） | 真实 LLM/embedding/**视觉**端点；未配 key 自动跳过 | `MEMTIDE_LIVE=1 ... python -m unittest tests.test_live` |
 | 体检 | 4 步真端点检查 | `python scripts/live_check.py` |
 | 门控标定 | 改写对相似度分布 → 建议阈值 | `python scripts/calibrate_gate.py` |

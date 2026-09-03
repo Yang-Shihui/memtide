@@ -160,10 +160,16 @@ class Retriever:
     def search(self, query: str, user_id: Optional[str] = None, agent_id: Optional[str] = None,
                run_id: Optional[str] = None, limit: Optional[int] = None,
                include_forgotten: bool = False, memory_type: Optional[str] = None,
-               slot: Optional[str] = None) -> List[SearchResult]:
+               slot: Optional[str] = None, reinforce: bool = True) -> List[SearchResult]:
         cfg = self.cfg
         limit = limit or cfg.final_topk
         qvec = self.embedder.embed(query)
+        if slot:
+            # User-supplied filter may use an alias (city); stored slots are
+            # canonical (location) — normalise so the filter still matches.
+            from .slots import canonicalize_slot
+
+            slot = canonicalize_slot(slot) or slot
 
         # channel rankings for the query (+ expanded variants when enabled).
         # Entity is the loosest channel (CJK n-gram keys) so it fuses at a
@@ -262,8 +268,9 @@ class Retriever:
             results = self._mmr(results, qvec, limit)
 
         top = results[:limit]
-        # retrieval reinforces memory (spacing effect) — skip ACCESS noise in tests
-        if top:
+        # retrieval reinforces memory (spacing effect) — read-only callers
+        # (render_context previews) opt out to avoid a display feedback loop
+        if top and reinforce:
             self.store.mark_accessed([r.memory.id for r in top])
         return top
 

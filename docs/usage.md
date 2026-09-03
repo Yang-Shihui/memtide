@@ -102,7 +102,8 @@ mem.render_context(user_id, agent_id=None, query=None)  # → 核心记忆块文
 mem.get_history(memory_id=None, limit=100)      # 审计事件（不带 id = 全库最近）
 ```
 
-`memory_type`（fact/preference/episodic/procedural）与 `slot`（如 "location"）
+`memory_type`（fact/preference/episodic/procedural）与 `slot`（如 "location"；开放 hint，
+过滤前经别名归一，`slot="city"` 也能命中 location 记忆）
 为融合后过滤；`search` 命中会强化记忆（access_count++，越查越难忘）。
 
 ### 修改与删除
@@ -157,7 +158,7 @@ curl -X POST localhost:8300/memories -d '{
 
 # 检索
 curl -X POST localhost:8300/search -d '{"query":"用户住哪","user_id":"alice","limit":3}'
-#   → [{score, components:{rrf,semantic,bm25,entity,retention}, memory, attachments?}]
+#   → [{score, components:{rrf,semantic,bm25,entity,retention(+rerank)}, memory, attachments?}]
 
 # 记忆 CRUD
 curl "localhost:8300/memories?user_id=alice&limit=50"     # 列表（&include_invalid=true 含失效）
@@ -183,8 +184,8 @@ curl -X POST localhost:8300/reset -d '{"confirm":"RESET"}'   # 危险：清空�
 `X-API-Key: xxx` 或 `Authorization: Bearer xxx`（静态页面本身公开，
 浏览器控制台会弹出 key 输入框，保存后自动附带）。不设即开放（开发默认）。
 
-错误约定：缺参/非法时间戳/超限媒体 → `400 {"error": ...}`；未认证 → 404/401；
-不存在 → 404；内部异常 → 500 JSON（不会断连）。
+错误约定：缺参/非法时间戳/超限媒体/非法 compact threshold → `400 {"error": ...}`；未认证 → 401（API 前缀；静态控制台保持公开）；
+不存在 → 404；内部异常 → 500 JSON（仅异常类型 + 前 200 字符，不会断连）。
 
 ## Web UI（可视化管理台）
 
@@ -247,7 +248,10 @@ docker exec -it memtide-memtide-1 python /app/scripts/seed_demo.py   # 交互确
 | vision_api_key | MEMTIDE_VISION_API_KEY | 继承 LLM_API_KEY | |
 | stt_model | MEMTIDE_STT_MODEL | 空 | 配置后音频才转写 |
 | gate_enabled / 各阈值 | —（代码配置） | true / 0.5 / 2.5 bits | 门控，见 design.md §3.3 |
-| gate_slot_scoped | —（代码配置） | true | slot 范围先验：惊喜值只在同 slot 记忆上取 |
+| gate_slot_scoped / gate_slot_floor | —（代码配置） | true / 0.40 | slot 范围先验开关与同槽冲突底线（经别名归一判定） |
+| slot_aliases | —（代码配置） | {} | 追加自定义槽别名，合并覆盖内置表（slots.py） |
+| entity_channel_weight / expansion_variant_weight | —（代码配置） | 0.5 / 0.5 | 实体通道与扩展变体的 RRF 融合权重 |
+| max_half_life_mult / episodic_half_life_mult / episodic_floor | —（代码配置） | 4.0 / 0.5 / 0.05 | 遗忘曲线：拉伸封顶、分型半衰期、分型遗忘线 |
 | mmr_lambda | —（代码配置） | 0.0 | >0 启用 MMR 多样性选择 |
 | query_expansion | —（代码配置） | false | 检索前 LLM 生成翻译+改写变体（仅真实 LLM） |
 | rerank_backend / rerank_base_url / rerank_model | —（代码配置） | none | cross-encoder 重排（Jina/Cohere 风格 /rerank） |

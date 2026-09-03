@@ -69,7 +69,7 @@ S(f) = -log2 p_hat(f)        单位：bits
 | `S ≤ 0.5 bits`（p̂ ≥ 0.71） | **REJECT** 不编码 | 完全被先验预测到 → 无误差信号 → 编码是浪费容量 |
 | `0.5 < S < 2.5` | **INTEGRATE** 正常写入 | 图式一致信息 → 整合进先验，精化记忆 |
 | `S ≥ 2.5 bits` | **NOVEL** 写入 + 重要度 +0.1 | 图式外新异信息 → 强情景编码（间隔效应也偏向它） |
-| 同 slot 易变属性冲突 | **强制编码**（volatile-update） | 搬家/换工作本身就是记忆系统存在的意义——先验失效的位置恰是必须更新的位置 |
+| 同义 slot 单值冲突（规范化后相同 + cos ≥ `gate_slot_floor` 0.40） | **强制编码**（volatile-update） | 搬家/换工作本身就是记忆系统存在的意义——先验失效的位置恰是必须更新的位置；slot 为开放 hint，经别名归一判定（city == location），多值/时间限定事实不受此分支摆布，交给 LLM 消解决定 |
 
 阈值映射回相似度：REJECT 线 ≈ cos 0.84，NOVEL 线 ≈ cos 0.42。四个阈值都在
 `MemoryConfig`（`gate_*` 字段），门控可通过 `gate_enabled=False` 整体关闭。
