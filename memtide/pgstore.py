@@ -12,6 +12,8 @@ Install: pip install .  (psycopg is the only runtime dependency)
 from __future__ import annotations
 
 import json
+import queue
+import threading
 from typing import Any, Dict, Iterable, List, Optional
 
 from .storage import StorageBase
@@ -68,9 +70,6 @@ class ConnectionLimitError(RuntimeError):
 class PostgresStorage(StorageBase):
     def __init__(self, dsn: str, max_conns: int = 20):
         try:
-            import queue
-            import threading
-
             import psycopg
             from psycopg.rows import dict_row
         except ImportError as e:  # pragma: no cover
@@ -86,6 +85,7 @@ class PostgresStorage(StorageBase):
         self._pool = queue.SimpleQueue()
         self._max_conns = max_conns
         self._guard = threading.Lock()
+        self._opened = 0  # connections ever created; the pool's real bound
         # SCHEMA public anchors extensions there: test runs point search_path
         # at a temp schema and must not relocate (or CASCADE-drop) shared
         # extensions when the temp schema is dropped
@@ -108,24 +108,26 @@ class PostgresStorage(StorageBase):
     def _acquire(self):
         """Context manager handing out a pooled connection (used via ``with``).
 
-        All internal call sites use ``with self._conn() as conn:`` — never
+        All internal call sites use ``with self._acquire() as conn:`` — never
         leak a connection, so PG never sees "too many clients" again.
         """
-        import queue
-        import threading
-
         try:
             c = self._pool.get_nowait()
         except queue.Empty:
+            # Pool empty: create a new connection only while under the cap.
+            # The cap counts _opened (connections ever created), NOT the idle
+            # queue — the queue is empty here by definition, so gating on
+            # qsize() would never block anyone.
+            under_cap = False
             with self._guard:
-                if self._pool.qsize() < self._max_conns:
+                under_cap = self._opened < self._max_conns
+                if under_cap:
                     import psycopg
 
                     c = psycopg.connect(self._dsn, row_factory=self._row_factory,
                                         autocommit=True)
-                else:
-                    c = None
-            if c is None:
+                    self._opened += 1
+            if not under_cap:
                 # wait up to 5s for a slot, then fail loudly with a clean error
                 try:
                     c = self._pool.get(timeout=5)
@@ -140,6 +142,10 @@ class PostgresStorage(StorageBase):
             def __exit__(_self, *exc):
                 try:
                     if c.closed:
+                        # dead connection: drop it and hand its slot back to
+                        # the cap so a healthy replacement can be created
+                        with self._guard:
+                            self._opened -= 1
                         return False
                     self._pool.put(c)
                 except Exception:

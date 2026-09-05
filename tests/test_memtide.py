@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from memtide import MemoryConfig, MemoryEngine, MemoryType
 from memtide.decay import retention
+from memtide.pgstore import ConnectionLimitError
 from tests.fake_openai import start_fake_server
 from tests.testinfra import new_collection, new_schema_dsn
 
@@ -1574,6 +1575,35 @@ class TestOptimizations(unittest.TestCase):
         # all borrowed connections must be back in the pool
         self.assertGreaterEqual(store._pool.qsize(), baseline,
                                 "pool lost connections (leak)")
+        eng.close()
+
+    def test_pool_enforces_connection_cap(self):
+        """Regression: the cap must count connections ever created, not the
+        idle queue. Gating on qsize() was vacuous — the queue is empty at the
+        moment of the check, so borrowers just opened new connections and the
+        'max_conns' bound was never enforced. Hold every pooled connection and
+        the next borrow must block out its grace period, then fail loudly."""
+        eng = fresh_engine(gate_enabled=False)
+        store = eng.store
+
+        held = []
+        try:
+            with self.assertRaises(ConnectionLimitError):
+                while True:
+                    ctx = store._acquire()
+                    ctx.__enter__()
+                    held.append(ctx)
+        finally:
+            for ctx in held:
+                ctx.__exit__(None, None, None)
+
+        self.assertLessEqual(store._opened, store._max_conns,
+                             "cap exceeded: more connections opened than max_conns")
+        # every held connection is back; a new borrow is served from the pool
+        # without opening anything new
+        with store._acquire() as conn:
+            conn.execute("SELECT 1")
+        self.assertLessEqual(store._opened, store._max_conns)
         eng.close()
 
     # ---- helper ---------------------------------------------------------------
