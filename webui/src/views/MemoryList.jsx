@@ -208,12 +208,21 @@ function DetailDrawer({ id, onClose, onJump }) {
   const [mem, setMem] = useState(null);
   const [hist, setHist] = useState([]);
   const [err, setErr] = useState("");
+  const [histErr, setHistErr] = useState("");
 
   useEffect(() => {
+    let alive = true;
     setMem(null);
     setHist([]);
-    api.get(id, true).then(setMem).catch((e) => setErr(e.message));
-    api.history(id).then(setHist).catch(() => {});
+    setErr("");
+    api.get(id, true)
+      .then((m) => { if (alive) setMem(m); })
+      .catch((e) => { if (alive) setErr(e.message); });
+    // a failing history fetch must not masquerade as "无事件"
+    api.history(id)
+      .then((h) => { if (alive) setHist(h); })
+      .catch((e) => { if (alive) setHistErr(e.message); });
+    return () => { alive = false; };
   }, [id]);
 
   return (
@@ -271,7 +280,8 @@ function DetailDrawer({ id, onClose, onJump }) {
                   )}
                 </div>
               ))}
-              {hist.length === 0 && <div className="empty">无事件</div>}
+              {hist.length === 0 && !histErr && <div className="empty">无事件</div>}
+              {histErr && <div className="err">审计时间线加载失败：{histErr}</div>}
             </div>
           </>
         )}

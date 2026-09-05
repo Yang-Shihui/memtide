@@ -47,7 +47,7 @@ export default function SearchPlayground({ view }) {
         <div className="row">
           <input placeholder="输入查询，如：用户喜欢什么咖啡？" aria-label="检索查询" style={{ flex: 1 }}
                  value={query} onChange={(e) => setQuery(e.target.value)}
-                 onKeyDown={(e) => e.key === "Enter" && doSearch()} />
+                 onKeyDown={(e) => e.key === "Enter" && !busy && doSearch()} />
           <select value={limit} onChange={(e) => setLimit(+e.target.value)}>
             {[3, 5, 10, 20].map((n) => <option key={n} value={n}>top {n}</option>)}
           </select>
@@ -95,7 +95,7 @@ export default function SearchPlayground({ view }) {
             <div className="meta">
               <span className="badge">{(h.score * 100).toFixed(1)} 分</span>
               <span className="chip">user:{h.user_id}</span>
-              <span className="chip">{h.created_at?.slice(0, 10)}</span>
+              <span className="chip">{new Date(h.created_at).toLocaleDateString()}</span>
             </div>
             <div className="text">{h.memory}</div>
             <div className="barline">

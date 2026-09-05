@@ -4,7 +4,12 @@ import React, { useState } from "react";
 
 export function fmtTime(ts) {
   if (!ts) return "—";
-  return ts.replace("T", " ").slice(0, 19);
+  // backend stores UTC ISO strings — render in the viewer's local timezone
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts.replace("T", " ").slice(0, 19);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
+    `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 export function relTime(ts) {
@@ -17,7 +22,10 @@ export function relTime(ts) {
   if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
   if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
   if (diff < 7 * 86400) return `${Math.floor(diff / 86400)} 天前`;
-  return ts.slice(0, 10);
+  // past a week the date matters more than the elapsed time — local date
+  const d = new Date(ts);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 export function CopyButton({ text, label = "复制", doneLabel = "已复制" }) {

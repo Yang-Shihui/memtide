@@ -47,7 +47,7 @@ export default function ContextPanel({ view }) {
                  onChange={(e) => setUserId(e.target.value)} />
           <input placeholder="可选：用查询召回相关记忆，如 用户喜欢什么" aria-label="召回查询" style={{ flex: 1, minWidth: 240 }}
                  value={query} onChange={(e) => setQuery(e.target.value)}
-                 onKeyDown={(e) => e.key === "Enter" && doRender()} />
+                 onKeyDown={(e) => e.key === "Enter" && !busy && doRender()} />
           <button className="btn" onClick={doRender} disabled={busy}>
             {busy ? "渲染中…" : "渲染核心记忆块"}
           </button>

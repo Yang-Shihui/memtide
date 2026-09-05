@@ -78,31 +78,43 @@ export default function Operations({ view }) {
 
   // ---- maintenance: compact + media gc ----
   const [compactReport, setCompactReport] = useState(null);
-  const doCompact = wrap(async () => {
+  // shared busy gate: compact/rebuild/gc are heavy — don't let double-clicks
+  // fire duplicates
+  const [maintBusy, setMaintBusy] = useState(false);
+  const maint = (fn) => async () => {
+    if (maintBusy) return;
+    setMaintBusy(true);
+    try {
+      await fn();  // wrap() already reports failures
+    } finally {
+      setMaintBusy(false);
+    }
+  };
+  const doCompact = maint(wrap(async () => {
     const r = await api.compact(scope.user_id || "default");
     setCompactReport(r);
     notify(r.absorbed ? `压实完成：${r.clusters} 簇 / 吸收 ${r.absorbed} 条近重复` : "没有发现近重复");
-  });
-  const doMediaGc = wrap(async () => {
+  }));
+  const doMediaGc = maint(wrap(async () => {
     const r = await api.mediaGc(true);
     notify(r.orphan ? `已清理 ${r.removed.length} 个孤儿媒体文件` : "没有孤儿媒体文件");
-  });
+  }));
 
   // ---- rebuild index ----
-  const doRebuild = wrap(async () => {
+  const doRebuild = maint(wrap(async () => {
     const data = await api.rebuild();
     notify(`索引重建完成：${data.reindexed} 条`);
-  });
+  }));
 
   // ---- reset ----
-  const doReset = () => {
+  const doReset = maint(async () => {
     const t = prompt("这将删除【所有用户】的全部记忆且不可恢复！输入 RESET 确认：");
     if (t !== "RESET") return;
     wrap(async () => {
       await api.reset();
       notify("记忆库已重置");
     })();
-  };
+  });
 
   return (
     <>
@@ -190,10 +202,10 @@ export default function Operations({ view }) {
       <h2>维护</h2>
       <div className="panel">
         <div className="row">
-          <button className="btn ghost" onClick={doCompact}>近重复压实</button>
-          <button className="btn ghost" onClick={doMediaGc}>清理孤儿媒体</button>
-          <button className="btn ghost" onClick={doRebuild}>重建向量索引</button>
-          <button className="btn danger" onClick={doReset}>重置记忆库…</button>
+          <button className="btn ghost" onClick={doCompact} disabled={maintBusy}>近重复压实</button>
+          <button className="btn ghost" onClick={doMediaGc} disabled={maintBusy}>清理孤儿媒体</button>
+          <button className="btn ghost" onClick={doRebuild} disabled={maintBusy}>重建向量索引</button>
+          <button className="btn danger" onClick={doReset} disabled={maintBusy}>重置记忆库…</button>
         </div>
         <div className="muted" style={{ marginTop: 8 }}>
           压实=同作用域内 cos≥去重阈值的近重复只保留最优一条（审计链保留）；孤儿媒体=无任何记忆引用的落盘文件。
