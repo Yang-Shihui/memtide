@@ -6,6 +6,8 @@
     python -m memtide context "用户喜欢什么咖啡"          # render core block
     python -m memtide history                            # audit log
     python -m memtide stats
+    python -m memtide delete <memory_id>                 # soft-delete one memory
+    python -m memtide serve --port 8300                  # start the REST API server
 """
 
 from __future__ import annotations

@@ -143,7 +143,7 @@ def make_embedder(config) -> object:
                                  config.dashscope_base_url)
     api_key = config.resolve_api_key()
     if backend == "openai" and not api_key:
-        raise ValueError("embedding_backend=openai 需要 LLM_API_KEY")
+        raise ValueError("embedding_backend=openai 需要 LLM_API_KEY（或 OPENAI_API_KEY）")
     if backend == "auto" and config.resolve_dashscope_key():
         return DashScopeEmbedder(config.resolve_dashscope_key(),
                                  config.dashscope_embedding_model,

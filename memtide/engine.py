@@ -528,7 +528,7 @@ class MemoryEngine:
     # ------------------------------------------------------------------ audit
     @_locked
     def get_history(self, memory_id: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
-        """Full audit trail (ADD/UPDATE/DELETE/ACCESS with prev/new values)."""
+        """Full audit trail (ADD/UPDATE/DELETE/ACCESS/CONSOLIDATE with prev/new values)."""
         return self.store.history(memory_id, limit)
 
     @_locked

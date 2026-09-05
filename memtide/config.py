@@ -12,7 +12,7 @@ class MemoryConfig:
     # --- storage (PostgreSQL only) ----------------------------------------
     storage_backend: str = "postgres"
     pg_dsn: str = ""                     # e.g. postgresql://memtide:pw@localhost:5432/memtide
-    embedding_dim: int = 256             # learned on first embedding API call
+    embedding_dim: int = 256             # probe hint only; the live dim comes from embedder.dim, never written back
 
     # --- vector store (Qdrant only) -----------------------------------------
     vector_backend: str = "qdrant"
@@ -144,8 +144,8 @@ class MemoryConfig:
 
 
 def config_from_env() -> "MemoryConfig":
-    """Build a config from MEMTIDE_* / LLM_* / DASHSCOPE_* env variables
-    (used by the REST server and Docker deployment)."""
+    """Build a config from MEMTIDE_* / LLM_* / EMBEDDING_* / DASHSCOPE_* env
+    variables (used by the REST server and Docker deployment)."""
     cfg = MemoryConfig(
         storage_backend=(os.environ.get("MEMTIDE_STORAGE") or "postgres"),
         pg_dsn=(os.environ.get("MEMTIDE_PG_DSN") or ""),

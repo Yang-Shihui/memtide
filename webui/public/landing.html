@@ -115,7 +115,7 @@ footer a:hover{color:var(--text)}
 
 <header class="hero">
   <div class="wrap">
-    <span class="kicker">v0.1.0 · MIT · 核心零 SDK 依赖</span>
+    <span class="kicker">v0.1.0 · MIT · 核心零第三方 SDK 依赖（运行时仅 psycopg）</span>
     <h1>给 Agent 一颗<br/><span class="grad">长期记忆</span></h1>
     <p class="sub">Memtide 是一个核心零第三方 SDK 的 agent 记忆引擎——原子事实抽取、预测编码门控、
     混合检索、双时标审计、多模态记忆，PostgreSQL + Qdrant 生产栈开箱即用。</p>
@@ -154,9 +154,9 @@ mem.search(<span class="st">"用户住哪"</span>, user_id=<span class="st">"ali
       <div class="feat"><div class="ic i-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="4"/></svg></div>
         <h3>预测编码门控</h3><p>记忆库即生成式先验：完全被预测到的事实不编码，越意外的记忆重要度越高（S = −log₂ p̂ 三分流）。记忆库越用越小、越用越准。</p></div>
       <div class="feat"><div class="ic i-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div>
-        <h3>混合检索，得分可解释</h3><p>向量余弦 + BM25 全文 + 实体索引三路召回，RRF 融合再重排。每条命中都带 semantic / bm25 / retention 得分明细。</p></div>
+        <h3>混合检索，得分可解释</h3><p>向量余弦 + BM25 全文 + 实体索引三路召回，加权 RRF 融合后按语义相似/留存度/重要度重打分（可选 cross-encoder 重排与 MMR 多样性）。每条命中都带得分明细。</p></div>
       <div class="feat"><div class="ic i-violet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div>
-        <h3>遗忘曲线 + 后台反思</h3><p>Ebbinghaus 遗忘曲线：越少访问越快淡忘，被再次查询即"复忆"。定期反思把同主题簇蒸馏成概括，抽象层比细节忘得慢。</p></div>
+        <h3>遗忘曲线 + 后台反思</h3><p>Ebbinghaus 遗忘曲线：越少访问越快淡忘，被再次查询即"复忆"。开启 MEMTIDE_AUTO_REFLECT 后定期反思（或手动触发）把同主题簇蒸馏成概括，概括比细节忘得慢。</p></div>
       <div class="feat"><div class="ic i-rose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 7h13M8 12h13M8 17h13M3.5 7h.01M3.5 12h.01M3.5 17h.01"/></svg></div>
         <h3>双时标审计</h3><p>失效不删除：valid_at / invalid_at 双时标 + superseded_by 取代链 + 全量事件日志（ADD→UPDATE→ACCESS），历史完全可回放。</p></div>
       <div class="feat"><div class="ic i-cyan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M8 15h4"/></svg></div>

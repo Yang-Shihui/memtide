@@ -180,5 +180,5 @@ def make_llm(config) -> BaseLLM:
     api_key = config.resolve_api_key()
     if not api_key:
         raise ValueError(
-            "需要 LLM API key：设置 MEMTIDE/LLM_API_KEY（或在 MemoryConfig 里给 llm_api_key）")
+            "需要 LLM API key：设置 LLM_API_KEY 或 OPENAI_API_KEY（或在 MemoryConfig 里给 llm_api_key）")
     return OpenAIChatLLM(config.llm_base_url, api_key, config.llm_model)

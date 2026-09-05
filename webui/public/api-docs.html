@@ -119,7 +119,7 @@ footer .wrap{display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between;
         <tr><td><code>text</code> | <code>messages</code></td><td><span class="req">必填二选一</span>；messages 为 [{'role','content'}]，content 支持 parts（image_url / input_audio / file，可带 caption）</td></tr>
         <tr><td><code>user_id</code> / <code>agent_id</code> / <code>run_id</code></td><td>作用域隔离</td></tr>
         <tr><td><code>timestamp</code></td><td>ISO-8601，数据自身时间（导入历史对话），影响 created_at/valid_at/遗忘曲线</td></tr>
-        <tr><td><code>infer</code></td><td>默认 true；false = 原文直存</td></tr>
+        <tr><td><code>infer</code></td><td>默认 true；<code>false</code> 或字符串 <code>"false"</code> = 原文直存</td></tr>
         <tr><td><code>metadata</code></td><td>附加到本批事实的对象</td></tr>
       </table>
       <div class="try" data-method="POST" data-path="/memories"
@@ -135,7 +135,7 @@ footer .wrap{display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between;
     <div class="ep-body">
       <table class="params"><tr><th>Query</th><th>说明</th></tr>
         <tr><td><code>user_id / agent_id / run_id</code></td><td>作用域过滤</td></tr>
-        <tr><td><code>limit</code></td><td>默认 100</td></tr>
+        <tr><td><code>limit</code></td><td>默认 100（上限 500，SQL 层生效）</td></tr>
         <tr><td><code>include_invalid</code></td><td>true 时包含失效/被取代记忆</td></tr>
       </table>
       <div class="try" data-method="GET" data-path="/memories?user_id=demo&limit=5">
@@ -187,7 +187,7 @@ footer .wrap{display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between;
       <table class="params"><tr><th>参数</th><th>说明</th></tr>
         <tr><td><code>query</code></td><td><span class="req">必填</span></td></tr>
         <tr><td><code>user_id / agent_id / run_id</code></td><td>作用域</td></tr>
-        <tr><td><code>limit</code> / <code>include_forgotten</code></td><td>默认 10 / false</td></tr>
+        <tr><td><code>limit</code> / <code>include_forgotten</code></td><td>默认 10（上限 500）/ false（字符串 "false" 亦可）</td></tr>
         <tr><td><code>memory_type</code> / <code>slot</code></td><td>融合后过滤（fact/preference/episodic/procedural；slot 如 location）</td></tr>
       </table>
       <div class="try" data-method="POST" data-path="/search"
@@ -227,7 +227,7 @@ footer .wrap{display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between;
     <div class="ep-body">
       <div class="ep-desc">内容寻址原始文件（不可变缓存头）；sha256 来自记忆的 attachments 字段。</div>
       <div class="try" data-method="GET" data-path="/media/xxx">
-        <div class="row"><button class="btn primary sm">执行</button><span class="hint">二进制；浏览器直接显示图片</span></div>
+        <div class="row"><button class="btn primary sm">执行</button><span class="hint">二进制；带 nosniff + attachment 头（控制台缩略图走 blob URL，不受影响；浏览器直开会下载）</span></div>
         <pre></pre>
       </div>
     </div>
@@ -259,7 +259,7 @@ footer .wrap{display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between;
   <div class="ep">
     <div class="ep-head"><span class="m GET">GET</span><span class="ep-path">/export</span><span class="ep-name">JSONL 导出</span></div>
     <div class="ep-body">
-      <div class="ep-desc">含审计状态与 embedding（base64）；媒体文件需随 media_dir 拷贝。</div>
+      <div class="ep-desc">含审计状态与 embedding（base64）；媒体文件需随 media_dir 拷贝。参数：<code>?include_invalid</code>（默认 true）、<code>?embeddings=false</code> 省略向量、裸 <code>?download</code> 触发浏览器下载。</div>
       <div class="try" data-method="GET" data-path="/export?user_id=demo">
         <div class="row"><button class="btn primary sm">执行</button></div>
         <pre></pre>
@@ -327,7 +327,7 @@ footer .wrap{display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between;
 <footer>
   <div class="wrap">
     <span>Memtide · REST API · 全部端点也可在 <a href="/console">控制台</a> 可视化操作</span>
-    <span>错误约定：缺参/非法时间戳/超限媒体 → 400 · 未认证 → 401 · 不存在 → 404 · 内部异常 → 500 JSON</span>
+    <span>错误约定：缺参/非法时间戳（含非字符串）/超限媒体 → 400 · 未认证 → 401 · 请求体超 32MB → 413 · 不存在 → 404 · 连接池耗尽/内部异常 → 500 JSON</span>
   </div>
 </footer>
 

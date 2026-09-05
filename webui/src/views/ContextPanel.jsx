@@ -71,7 +71,7 @@ export default function ContextPanel({ view }) {
           </div>
           <pre style={{ display: "inline-block", textAlign: "left", maxWidth: 460 }}>{EXAMPLE}</pre>
           <div className="muted" style={{ marginTop: 10 }}>
-            提示：试试 <code>demo</code> 用户（已填充演示数据）
+            提示：试试 <code>demo</code> 用户（可用 scripts/seed_demo.py 一键填充演示数据）
           </div>
         </div>
       )}

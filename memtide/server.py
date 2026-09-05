@@ -1,4 +1,5 @@
-"""Zero-dependency REST API for Memtide (stdlib http.server, threaded).
+"""REST API for Memtide (stdlib http.server, threaded; the only runtime
+dependency is psycopg).
 
 Run:  python -m memtide serve --port 8300   (MEMTIDE_PG_DSN from env)
 
@@ -9,6 +10,8 @@ Endpoints (all JSON):
     PUT    /memories/{id}      update  {"text": "..."}
     DELETE /memories/{id}      delete  ?hard=true
     POST   /search             search  {"query", "user_id", "limit", "include_forgotten"}
+    POST   /consolidate        reflection pass {"user_id", "agent_id", "run_id"}
+    POST   /rebuild            rebuild the vector index from PostgreSQL
     GET    /context            render  ?user_id=&query=
     GET    /history            audit   ?memory_id=&limit=
     GET    /export             JSONL dump ?user_id=&embeddings=&include_invalid=&download
@@ -17,10 +20,11 @@ Endpoints (all JSON):
     POST   /media/gc           orphan media cleanup {"delete": true}
     GET    /media/{sha256}     fetch a stored media asset (images, audio, files)
     GET    /stats
-    POST   /reset              wipe (dev helper)
+    POST   /reset              wipe (requires body {"confirm": "RESET"})
 
-The management console is served at the ROOT (http://host:port/); /ui/* is
-kept as a legacy alias. When MEMTIDE_API_KEY is set, every API endpoint above
+The landing page is served at the ROOT (http://host:port/); the management
+console lives at /console (legacy /ui/*), and /docs & /api serve the API
+docs. When MEMTIDE_API_KEY is set, every API endpoint above
 requires the key via "X-API-Key" or "Authorization: Bearer".
 
 A single engine is shared across request threads behind the ENGINE's lock

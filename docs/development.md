@@ -7,8 +7,10 @@
 
 ```bash
 git clone <repo> && cd memtide
-docker compose up -d postgres              # 测试需要可达的 PG（compose 已发布 5432）
+docker compose up -d postgres qdrant       # 测试需要可达的 PG（5432）与 Qdrant（6333）
 python -m unittest tests.test_memtide      # ~15s，PG/Qdrant + 本地协议服务器，无外部网络
+# 本地 PG 凭据与 tests/testinfra.py 默认 DSN（mnemos/mnemos-local-dev@/mnemos）
+# 不一致时，用 MEMTIDE_TEST_PG_DSN 指向你的库
 
 # 真实端点联调（可选）：cp .env.example .env 填好 key 后
 set -a && source .env && set +a
@@ -54,7 +56,7 @@ memtide/
 
 | 套件 | 内容 | 运行 |
 |---|---|---|
-| hermetic（89 个） | 全功能回归 + 性能路径（查询计数）+ 连接池泄漏回归 + 历次 bug 回归；本地 OpenAI 协议服务器 + 独立 PG schema，无外部网络 | `python -m unittest tests.test_memtide` |
+| hermetic（94 个） | 全功能回归 + 性能路径（查询计数）+ 连接池上限/泄漏回归 + SSRF 守卫回归 + 历次 bug 回归；本地 OpenAI 协议服务器 + 独立 PG schema，无外部网络 | `python -m unittest tests.test_memtide` |
 | live（14 个） | 真实 LLM/embedding/**视觉**端点（含别名过滤/BM25加分/并发/衰减/重建/MMR+扩展）；未配 key 自动跳过 | `MEMTIDE_LIVE=1 ... python -m unittest tests.test_live` |
 | 体检 | 4 步真端点检查 | `python scripts/live_check.py` |
 | 门控标定 | 改写对相似度分布 → 建议阈值 | `python scripts/calibrate_gate.py` |
@@ -71,7 +73,7 @@ memtide/
 ## 代码约定
 
 - **核心协议简洁**：HTTP 客户端使用标准库 urllib；PostgreSQL 驱动 `psycopg` 是唯一运行时依赖。
-  新依赖必须放可选 extra 并惰性导入。
+  新依赖必须惰性导入并给出理由；psycopg 是唯一运行时依赖，包不提供可选 extra（`pip install .` 即装齐）。
 - 引擎只讲真实 OpenAI 协议；hermetic 测试通过 `tests/fake_openai.py`
   （本地假服务器）复刻规则级行为——改 prompt 路由时两处同步。
 - 所有写操作进审计日志（`log_event`）；所有删除默认软删除。

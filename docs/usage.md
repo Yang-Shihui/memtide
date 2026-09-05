@@ -174,7 +174,7 @@ curl -X POST localhost:8300/consolidate -d '{"user_id": "alice"}'  # 后台反�
 curl -X POST localhost:8300/compact -d '{"user_id": "alice"}'      # 近重复压实
 curl -X POST localhost:8300/media/gc -d '{"delete": true}'         # 孤儿媒体清理
 curl -X POST localhost:8300/rebuild                       # 重建向量索引
-curl "localhost:8300/export?user_id=alice&download=1"     # JSONL 导出（含审计+向量）
+curl "localhost:8300/export?user_id=alice&download"       # JSONL 导出（含审计+向量；裸 ?download 即触发下载，?embeddings=false 可省向量）
 curl -X POST localhost:8300/import -d '{"lines": [{...}]}'
 curl localhost:8300/stats
 curl -X POST localhost:8300/reset -d '{"confirm":"RESET"}'   # 危险：清空全库
@@ -184,8 +184,8 @@ curl -X POST localhost:8300/reset -d '{"confirm":"RESET"}'   # 危险：清空�
 `X-API-Key: xxx` 或 `Authorization: Bearer xxx`（静态页面本身公开，
 浏览器控制台会弹出 key 输入框，保存后自动附带）。不设即开放（开发默认）。
 
-错误约定：缺参/非法时间戳/超限媒体/非法 compact threshold → `400 {"error": ...}`；未认证 → 401（API 前缀；静态控制台保持公开）；
-不存在 → 404；内部异常 → 500 JSON（仅异常类型 + 前 200 字符，不会断连）。
+错误约定：缺参/非法时间戳（含非字符串类型）/超限媒体/非法 compact threshold → `400 {"error": ...}`；未认证 → 401（API 前缀；静态控制台保持公开）；
+请求体超 32MB → 413；不存在 → 404；连接池耗尽/内部异常 → 500 JSON（仅异常类型 + 前 200 字符，不会断连）。
 
 ## Web UI（可视化管理台）
 
@@ -240,7 +240,10 @@ docker exec -it memtide-memtide-1 python /app/scripts/seed_demo.py   # 交互确
 | llm_backend | LLM_BACKEND | openai | OpenAI 兼容端点（无离线模式） |
 | llm_base_url/model/api_key | LLM_BASE_URL / LLM_MODEL / LLM_API_KEY | — | 任意 OpenAI 兼容端点 |
 | embedding_backend | EMBEDDING_BACKEND | auto | auto/openai/dashscope |
+| embedding_model | EMBEDDING_MODEL | text-embedding-3-small | openai/auto 路径的向量模型 |
 | dashscope_api_key | DASHSCOPE_API_KEY | — | 兼容模式 key |
+| dashscope_embedding_model / dashscope_base_url | DASHSCOPE_EMBEDDING_MODEL / DASHSCOPE_BASE_URL | qwen3.7-text-embedding / 官方 compatible-mode | |
+| stt_base_url | MEMTIDE_STT_BASE_URL | 继承主 LLM | 语音转写端点（默认复用主 LLM 配置） |
 | multimodal_enabled | MEMTIDE_MULTIMODAL | 1 | 0 = 忽略媒体 parts |
 | media_dir | MEMTIDE_MEDIA_DIR | memtide_media | 素材落盘目录 |
 | media_allow_paths | MEMTIDE_MEDIA_ALLOW_PATHS | 0 | **安全开关**：允许 `{"path": 本地路径}` 读媒体。默认关闭——REST 部署下开启等于把本地文件暴露给调用方；仅可信内嵌场景（CLI/进程内 agent）开启 |

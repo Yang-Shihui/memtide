@@ -23,7 +23,7 @@ async function req(method, path, body) {
   const resp = await fetch(path, opt);
   if (resp.status === 401) {
     window.dispatchEvent(new CustomEvent("memtide-unauthorized"));
-    throw new Error("需要 API Key（右上角输入）");
+    throw new Error("需要 API Key（服务端返回 401 后会弹出输入框，保存后自动重试）");
   }
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
@@ -68,7 +68,7 @@ export const api = {
     const resp = await fetch(`/media/${sha256}`, opt);
     if (resp.status === 401) {
       window.dispatchEvent(new CustomEvent("memtide-unauthorized"));
-      throw new Error("需要 API Key（右上角输入）");
+      throw new Error("需要 API Key（服务端返回 401 后会弹出输入框，保存后自动重试）");
     }
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     return URL.createObjectURL(await resp.blob());

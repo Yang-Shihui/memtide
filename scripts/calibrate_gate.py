@@ -8,7 +8,7 @@ embedders run this script: it embeds a built-in set of paraphrase pairs
 prints the similarity distributions and SUGGESTS thresholds.
 
 Usage (with the same env/config the deployment uses):
-    python scripts/calibrate_gate.py            # uses config_from_env()
+    python scripts/calibrate_gate.py            # reads EMBEDDING_BACKEND / LLM_API_KEY / DASHSCOPE_API_KEY directly from env
     source .env && python scripts/calibrate_gate.py  # current production embedder
 """
 

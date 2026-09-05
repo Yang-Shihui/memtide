@@ -58,7 +58,7 @@ hits = mem.search("用户现在住在哪里？", user_id="alice")
 system_prompt = "你是助理。\n" + mem.render_context(user_id="alice", query="用户的职业？")
 
 # 5. 全量审计：ADD → UPDATE → ACCESS，每步带 prev/new 值
-mem.get_history(memory_id=hits[0]["id"])
+mem.get_history(memory_id=hits[0].memory.id)
 ```
 
 ## 文档
@@ -119,7 +119,7 @@ curl localhost:8300/stats   # 返回真实 LLM / embedding / PostgreSQL / Qdrant
 
 栈组成：`paradedb/paradedb:pg16`（PostgreSQL 16 + pg_search BM25 全文检索）、`qdrant`（向量 ANN 索引，
 embedding 模型变更时自动重建集合）、`memtide`（REST 服务）。数据分别在
-pgdata/qdrantdata volume 中持久化。
+pgdata/qdrantdata/mndata volume 中持久化（媒体文件在 mndata:/data/media）。
 
 **真实端点验证**：`python3 scripts/live_check.py --docker` 顺序检查 LLM 连通、
 embedding 维度、真实后端全链路（抽取/门控/检索/易变属性更新/LLM 反思/审计链）、
@@ -139,8 +139,8 @@ REST 服务内置 React 管理台：启动后 **`http://localhost:8300/`** 是�
 | 页面 | 功能 |
 |---|---|
 | 总览 | 记忆数/失效数/事件分布图、后端信息 |
-| 记忆库 | 过滤浏览（含失效/被取代记忆）、重要度条、门控徽章、surprise 值；编辑/删除（软/硬）/详情 |
-| 详情抽屉 | 完整字段 + **审计时间线**（ADD→UPDATE→ACCESS→CONSOLIDATE 可视化）+ superseded_by 跳转 |
+| 记忆库 | 过滤浏览（含失效/被取代记忆）、重要度条、门控徽章、surprise 值；编辑/删除（软/硬）；点「详情」打开详情抽屉 |
+| ↳ 详情抽屉 | 完整字段 + **审计时间线**（ADD→UPDATE→ACCESS→CONSOLIDATE 可视化）+ superseded_by 跳转 |
 | 检索试玩 | query → 命中结果带**得分成分条**（语义/留存度/RRF/全文/实体命中），直观理解混合检索排序 |
 | 核心记忆 | 渲染 `render_context()` 输出块预览 + 复制 |
 | 操作 | 快速写入并可视化 AddResult（每条事实的编码/拦截决策 + surprise bits）、一键后台反思、重建索引、重置库 |
@@ -151,7 +151,7 @@ REST 服务内置 React 管理台：启动后 **`http://localhost:8300/`** 是�
 
 ### REST API 服务
 
-内置零依赖 HTTP 服务（标准库 `http.server` 实现），一行启动：
+内置 HTTP 服务（标准库 `http.server` 实现；psycopg 是唯一运行时依赖），一行启动：
 
 ```bash
 source .env && python -m memtide serve --port 8300
@@ -249,7 +249,7 @@ python -m memtide stats
   且半衰期 ×3 抗衰减），
   原事实标 `invalid_at` 并留 `superseded_by` 链接，审计日志记 CONSOLIDATE
   事件——记忆库越用越小、越用越精，且无信息丢失。
-- **遗忘是软性的**：留存度 `retention = 0.5^(age / (half_life × (1 + 0.4·ln(1+access_count))))`，低于阈值的记忆不再浮现但保留在库中——被再次查询时即可"复忆"。
+- **遗忘是软性的**：留存度 `retention = 0.5^(age / (half_life × min(1 + 0.4·ln(1+access_count), 4.0)))`，低于阈值的记忆不再浮现但保留在库中——被再次查询时即可"复忆"。
 - **多租户隔离**：所有读写按 `user_id` / `agent_id` / `run_id` 作用域隔离。
 
 ## 项目结构
@@ -272,7 +272,7 @@ memtide/
 │   ├── config.py      # MemoryConfig（全部阈值可调）
 │   ├── server.py      # REST API（stdlib http.server，含 /media 素材服务）
 │   └── cli.py         # 命令行入口
-├── tests/test_memtide.py   # 89 个测试（hermetic 回归：全功能/性能路径/多模态/迁移/运维/连接池泄漏）+ 14 个 live 集成测试（真实端点含真实视觉/并发/别名/衰减，MEMTIDE_LIVE=1 门控）
+├── tests/test_memtide.py   # 94 个测试（hermetic 回归：全功能/性能路径/多模态/迁移/运维/连接池上限/SSRF 守卫/布尔与 flag 解析）+ 14 个 live 集成测试（真实端点含真实视觉/并发/别名/衰减，MEMTIDE_LIVE=1 门控）
 └── examples/
 ```
 
@@ -280,7 +280,7 @@ memtide/
 ## 测试
 
 ```bash
-python3 -m unittest tests.test_memtide   # 89 tests, PG/Qdrant + 本地协议服务器，无外部网络
+python3 -m unittest tests.test_memtide   # 94 tests, PG/Qdrant + 本地协议服务器，无外部网络
 ```
 
 ## License

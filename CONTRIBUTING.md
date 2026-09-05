@@ -10,10 +10,13 @@ git clone <your-fork> && cd memtide
 pip install .                # psycopg is the only runtime dependency
 cp .env.example .env         # fill in LLM / embedding keys for live scripts
 docker compose up -d postgres qdrant   # tests need reachable PG + Qdrant
-python -m unittest tests.test_memtide   # 73 hermetic tests, ~15s, no network
+python -m unittest tests.test_memtide   # 94 hermetic tests, ~15s, no network
+                                         # (needs MEMTIDE_TEST_PG_DSN if your PG
+                                         #  differs from the mnemos/mnemos-local-dev
+                                         #  default in tests/testinfra.py)
 ```
 
-Live integration tests (`tests/test_live.py`, 8 tests, real LLM/embedding
+Live integration tests (`tests/test_live.py`, 14 tests, real LLM/embedding
 endpoints) are gated behind `MEMTIDE_LIVE=1` and skipped by default.
 `scripts/live_check.py` exercises a real deployment — it always creates its
 own PG schema and Qdrant collection, never touching production data.
