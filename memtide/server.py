@@ -148,10 +148,34 @@ def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
                 return {}
 
         def _qs(self) -> dict:
-            return {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
+            # keep_blank_values: a bare ?download must survive as "" so the
+            # documented flag form works
+            return {k: v[0] for k, v in
+                    parse_qs(urlparse(self.path).query, keep_blank_values=True).items()}
 
         def _scoped(self, params: dict) -> dict:
             return {k: params.get(k) or None for k in ("user_id", "agent_id", "run_id")}
+
+        @staticmethod
+        def _bool(value, default: bool) -> bool:
+            """JSON booleans pass through; the string 'false'/'0'/'no' must
+            not be silently truthy."""
+            if value is None:
+                return default
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                return value.strip().lower() not in ("", "false", "0", "no", "off")
+            return bool(value)
+
+        def _flag(self, params: dict, name: str) -> bool:
+            """Bare query flag (?name) is true; ?name=false/0/no is false."""
+            if name not in params:
+                return False
+            v = (params[name] or "").strip().lower()
+            if not v:
+                return True  # bare flag: ?download means download
+            return v not in ("false", "0", "no", "off")
 
         @staticmethod
         def _int(value, default: int, lo: int = 1, hi: int = 500) -> int:
@@ -202,7 +226,7 @@ def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
                             agent_id=body.get("agent_id"),
                             run_id=body.get("run_id"),
                             metadata=body.get("metadata"),
-                            infer=body.get("infer", True),
+                            infer=self._bool(body.get("infer"), True),
                             timestamp=ts,
                         )
                 except ValueError as e:
@@ -219,7 +243,7 @@ def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
                         agent_id=body.get("agent_id"),
                         run_id=body.get("run_id"),
                         limit=self._int(body.get("limit"), 10),
-                        include_forgotten=bool(body.get("include_forgotten")),
+                        include_forgotten=self._bool(body.get("include_forgotten"), False),
                         memory_type=body.get("memory_type") or None,
                         slot=body.get("slot") or None,
                     )
@@ -256,7 +280,7 @@ def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
                 return self._json(200, report)
             if path == "/media/gc":
                 with state.lock:
-                    report = state.engine.media_gc(delete=bool(body.get("delete")))
+                    report = state.engine.media_gc(delete=self._bool(body.get("delete"), False))
                 return self._json(200, report)
             if path == "/import":
                 lines = body.get("lines")
@@ -322,28 +346,35 @@ def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
             ctype = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
             with open(file_path, "rb") as f:
                 body = f.read()
-            self._send(200, {"Content-Type": ctype,
-                             "Content-Length": str(len(body)),
-                             "Cache-Control": "public, max-age=31536000, immutable"},
-                       body)
+            self._send(200, {
+                "Content-Type": ctype,
+                "Content-Length": str(len(body)),
+                "Cache-Control": "public, max-age=31536000, immutable",
+                # media bytes are attacker-influenced via uploads: never let
+                # the browser sniff or render them in-site (the console shows
+                # them through blob URLs, which ignore this header)
+                "X-Content-Type-Options": "nosniff",
+                "Content-Disposition": f'attachment; filename="{name}"',
+            }, body)
 
         def _route_do_GET(self):
             url = urlparse(self.path)
             path = url.path.rstrip("/") or "/"
-            params = {k: v[0] for k, v in parse_qs(url.query).items()}
+            params = {k: v[0] for k, v in
+                      parse_qs(url.query, keep_blank_values=True).items()}
             # the console IS the root; /ui/* kept as a legacy alias.
             # non-API paths fall through to the SPA at the end of this method
             if path.startswith("/media/"):
                 return self._serve_media(path.split("/")[-1])
             if path == "/memories":
                 scope = self._scoped(params)
-                include_invalid = params.get("include_invalid", "").lower() == "true"
+                include_invalid = self._flag(params, "include_invalid")
                 with state.lock:
                     if include_invalid:
                         mems = state.engine.store.all_rows(
                             user_id=scope["user_id"], agent_id=scope["agent_id"],
-                            run_id=scope["run_id"], include_invalid=True)
-                        mems = mems[: self._int(params.get("limit"), 100)]
+                            run_id=scope["run_id"], include_invalid=True,
+                            limit=self._int(params.get("limit"), 100))
                     else:
                         mems = state.engine.get_all(
                             user_id=scope["user_id"], agent_id=scope["agent_id"],
@@ -351,7 +382,7 @@ def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
                 return self._json(200, [m.to_dict() for m in mems])
             if path.startswith("/memories/"):
                 mid = path.split("/")[-1]
-                include_invalid = params.get("include_invalid", "").lower() == "true"
+                include_invalid = self._flag(params, "include_invalid")
                 with state.lock:
                     mem = state.engine.get(mid)
                 # soft-deleted (invalidated) memories stay in the DB for audit,
@@ -377,13 +408,15 @@ def make_handler(engine: MemoryEngine, api_key: Optional[str] = None) -> type:
                         user_id=params.get("user_id"),
                         agent_id=params.get("agent_id"),
                         run_id=params.get("run_id"),
-                        include_invalid=params.get("include_invalid", "true").lower() != "false",
-                        include_embeddings=params.get("embeddings", "true").lower() != "false",
+                        include_invalid=self._bool(params.get("include_invalid"), True)
+                        if params.get("include_invalid") else True,
+                        include_embeddings=self._bool(params.get("embeddings"), True)
+                        if params.get("embeddings") else True,
                     )
                 body = ("\n".join(lines) + ("\n" if lines else "")).encode()
                 headers = {"Content-Type": "application/x-ndjson; charset=utf-8",
                            "Content-Length": str(len(body))}
-                if params.get("download") is not None:
+                if self._flag(params, "download"):
                     headers["Content-Disposition"] = 'attachment; filename="memtide-export.jsonl"'
                 self._send(200, headers, body)
                 return

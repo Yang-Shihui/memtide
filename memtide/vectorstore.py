@@ -86,11 +86,12 @@ class QdrantVectorStore(VectorStoreBase):
                                   for mid, vec, payload in batch]})
 
     def delete(self, mem_id):
-        try:
-            self._req("POST", f"/collections/{self.collection}/points/delete",
-                      {"points": [_point_id(mem_id)]})
-        except urllib.error.HTTPError:
-            pass
+        # fail loud (same contract engine.delete documents): a 401/403/404
+        # here means the index is drifting from the relational store and a
+        # rebuild_index() is needed — swallowing it would hide the drift.
+        # Deleting a nonexistent point is a Qdrant 200, not an error.
+        self._req("POST", f"/collections/{self.collection}/points/delete",
+                  {"points": [_point_id(mem_id)]})
 
     def count(self) -> int:
         """Exact point count used to validate index rebuild coverage."""

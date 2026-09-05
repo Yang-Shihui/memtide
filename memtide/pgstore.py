@@ -322,7 +322,8 @@ class PostgresStorage(StorageBase):
         return out
 
     def all_valid(self, user_id: Optional[str] = None, agent_id: Optional[str] = None,
-                  run_id: Optional[str] = None) -> List[Memory]:
+                  run_id: Optional[str] = None,
+                  limit: Optional[int] = None) -> List[Memory]:
         clauses = ["invalid_at IS NULL"]
         params: List[Any] = []
         if user_id:
@@ -334,11 +335,14 @@ class PostgresStorage(StorageBase):
         if run_id:
             clauses.append("run_id = %s")
             params.append(run_id)
+        sql = f"SELECT * FROM memories WHERE {' AND '.join(clauses)} ORDER BY created_at DESC"
+        if limit is not None:
+            # push the cap into PG: slicing in Python would first load every
+            # row in scope (attachments JSON included)
+            sql += " LIMIT %s"
+            params.append(limit)
         with self._acquire() as conn:
-            rows = conn.execute(
-                f"SELECT * FROM memories WHERE {' AND '.join(clauses)} ORDER BY created_at DESC",
-                params,
-            )
+            rows = conn.execute(sql, params)
         return [self._to_memory(r) for r in rows]
 
     def all_embeddings(self, user_id: Optional[str] = None, agent_id: Optional[str] = None,
@@ -363,7 +367,8 @@ class PostgresStorage(StorageBase):
         return [r["user_id"] for r in rows]
 
     def all_rows(self, user_id: Optional[str] = None, agent_id: Optional[str] = None,
-                 run_id: Optional[str] = None, include_invalid: bool = False) -> List[Memory]:
+                 run_id: Optional[str] = None, include_invalid: bool = False,
+                 limit: Optional[int] = None) -> List[Memory]:
         clauses, params = [], []
         if not include_invalid:
             clauses.append("invalid_at IS NULL")
@@ -372,9 +377,12 @@ class PostgresStorage(StorageBase):
                 clauses.append(f"{col} = %s")
                 params.append(val)
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        sql = f"SELECT * FROM memories{where} ORDER BY created_at DESC"
+        if limit is not None:
+            sql += " LIMIT %s"
+            params.append(limit)
         with self._acquire() as conn:
-            rows = conn.execute(
-                f"SELECT * FROM memories{where} ORDER BY created_at DESC", params)
+            rows = conn.execute(sql, params)
         return [self._to_memory(r) for r in rows]
 
     def all_rows_with_embeddings(self) -> List[Dict[str, Any]]:

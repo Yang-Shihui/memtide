@@ -51,6 +51,9 @@ def _normalize_ts(timestamp: Optional[str]) -> Optional[str]:
     consistent even when an import mixes offsets."""
     if timestamp is None:
         return None
+    if not isinstance(timestamp, str):
+        # reject before .strip() so REST clients get a 400, not a 500
+        raise ValueError(f"invalid timestamp {timestamp!r}: need an ISO-8601 string")
     from datetime import datetime, timezone
 
     t = timestamp.strip()
@@ -401,7 +404,7 @@ class MemoryEngine:
     @_locked
     def get_all(self, user_id: Optional[str] = None, agent_id: Optional[str] = None,
                 run_id: Optional[str] = None, limit: int = 100) -> List[Memory]:
-        return self.store.all_valid(user_id, agent_id, run_id)[:limit]
+        return self.store.all_valid(user_id, agent_id, run_id, limit=limit)
 
     @_locked
     def update(self, memory_id: str, text: str) -> bool:

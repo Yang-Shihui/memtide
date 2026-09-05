@@ -17,7 +17,9 @@ services:
       retries: 10
 
   qdrant:
-    image: qdrant/qdrant:latest
+    # pinned: 'latest' made fresh clones unreproducible, and Qdrant refuses
+    # downgrades — a volume written by a newer latest would strand any pin
+    image: qdrant/qdrant:v1.18.1
     ports:
       - "6333:6333"
     volumes:

@@ -488,6 +488,21 @@ class TestBugfixRegression(unittest.TestCase):
         self.assertEqual(eng.store.stats()["active_memories"], 0)
         eng.close()
 
+    def test_list_limit_pushed_into_sql(self):
+        """Regression: get_all/list fetched EVERY row in scope and sliced in
+        Python — the limit must reach the SQL query instead."""
+        eng = fresh_engine(gate_enabled=False)
+        seeds = ("用户住在杭州西湖区", "用户是产品经理", "用户喜欢喝美式咖啡",
+                 "用户的猫叫煤球", "用户在学吉他")
+        for text in seeds:
+            eng.add(text, user_id="lim", infer=False)
+        self.assertEqual(len(eng.get_all("lim", limit=2)), 2)
+        rows = eng.store.all_rows(user_id="lim", limit=1)
+        self.assertEqual(len(rows), 1)
+        # None keeps the unbounded default for internal full scans
+        self.assertEqual(len(eng.store.all_rows(user_id="lim")), 5)
+        eng.close()
+
     def test_bm25_and_entity_channels_respect_agent_scope(self):
         eng = fresh_engine()
         eng.add("用户专有名词量子柠檬比较特殊", user_id="u", agent_id="agentA", infer=False)
@@ -635,6 +650,35 @@ class TestRestApi(unittest.TestCase):
         self.assertEqual(code, 400)
         code, res = self._req("GET", "/stats?limit=zzz")
         self.assertEqual(code, 200)
+
+    def test_non_string_timestamp_is_400(self):
+        """Regression: a JSON number timestamp hit .strip() -> AttributeError
+        and surfaced as a generic 500 instead of a client error."""
+        code, res = self._req("POST", "/memories", {"text": "x", "timestamp": 123})
+        self.assertEqual(code, 400)
+
+    def test_string_booleans_and_bare_flags(self):
+        """Regression: 'false' strings were truthy (infer:'false' still ran
+        the LLM) and a bare ?download flag was dropped by parse_qs."""
+        # infer:"false" must store the text verbatim, no LLM extraction
+        code, res = self._req("POST", "/memories",
+                              {"text": "字符串布尔原文直存", "user_id": "bool",
+                               "infer": "false"})
+        self.assertEqual(code, 201)
+        self.assertEqual(res["facts"], ["字符串布尔原文直存"])
+        self.assertEqual(len(res["added"]), 1)
+        # infer:"true" (string) must still enable extraction
+        code, res = self._req("POST", "/memories",
+                              {"text": "我叫字符串布尔测试员，住在北京", "user_id": "bool",
+                               "infer": "true"})
+        self.assertGreaterEqual(len(res["added"]), 2)
+        # bare ?download must set the attachment header
+        import urllib.request
+
+        with urllib.request.urlopen(f"{self.base}/export?user_id=bool&download",
+                                    timeout=5) as resp:
+            self.assertEqual(resp.headers.get("Content-Disposition"),
+                             'attachment; filename="memtide-export.jsonl"')
 
     def test_rest_timestamp_roundtrip(self):
         import json as _json

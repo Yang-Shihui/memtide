@@ -71,7 +71,9 @@ def save_media(data: bytes, media_dir: str, mime: str = "") -> Tuple[str, str, s
         ext = mimetypes.guess_extension(mime) or ""
         if ext == ".jpe":  # mimetypes' odd choice for image/jpeg
             ext = ".jpg"
-    if not ext:
+    if ext not in _MIME_BY_EXT:
+        # whitelist: a declared "text/html" mime must never become an
+        # executable extension on disk (.html) — unknown mimes are opaque
         ext = ".bin"
     os.makedirs(media_dir, exist_ok=True)
     name = sha + ext
@@ -91,6 +93,8 @@ def media_path(media_dir: str, sha256: str) -> Optional[str]:
     if not os.path.isdir(media_dir):
         return None
     for name in os.listdir(media_dir):
+        if ".tmp" in name:
+            continue  # crash-left partial write — never serve it
         if name.split(".")[0] == sha256:
             return os.path.join(media_dir, name)
     return None
