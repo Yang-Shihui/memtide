@@ -106,7 +106,7 @@ export default function Dashboard({ view }) {
     let timer = null;
     const load = () => {
       Promise.all([api.stats(), api.history(null, 10)])
-        .then(([s, h]) => { if (alive) { setStats(s); setRecent(h); } })
+        .then(([s, h]) => { if (alive) { setStats(s); setRecent(h); setErr(""); } })
         .catch((e) => { if (alive) setErr(e.message); });
     };
     const tick = () => {
@@ -118,8 +118,8 @@ export default function Dashboard({ view }) {
     return () => { alive = false; clearInterval(timer); };
   }, []);
 
-  if (err) return <div className="err">{err}</div>;
   if (!stats) {
+    if (err) return <div className="err">{err}</div>;
     return (
       <>
         <div className="grid cols3">
@@ -136,12 +136,13 @@ export default function Dashboard({ view }) {
   const maxEv = Math.max(1, ...Object.values(events));
   const backend = stats.backend || {};
   const typeCounts = stats.by_type || {};
-  const gateCounts = stats.by_gate || {};
+  const gateCounts = { ...(stats.by_gate || {}) };
   const unmarked = (stats.active_memories || 0) - Object.values(gateCounts).reduce((a, b) => a + b, 0);
   if (unmarked > 0) gateCounts.unmarked = (gateCounts.unmarked || 0) + unmarked;
 
   return (
     <>
+      {err && <div className="err">最新数据刷新失败：{err}（显示上次结果）</div>}
       <div className="grid cols3">
         <div className="stat">
           <div className="num">{stats.active_memories}</div>

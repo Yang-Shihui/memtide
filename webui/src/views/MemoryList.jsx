@@ -58,7 +58,7 @@ export function MemoryCard({ mem, scope, onDetail, onEdit, onDelete }) {
 }
 
 export default function MemoryList({ view }) {
-  const { scope, setScope, notify, wrap } = view;
+  const { scope, setScope, notify } = view;
   const [mems, setMems] = useState(null);
   const [err, setErr] = useState("");
   const [q, setQ] = useState("");
@@ -66,6 +66,7 @@ export default function MemoryList({ view }) {
   const [detailId, setDetailId] = useState(null);
   const [editing, setEditing] = useState(null);
   const [editText, setEditText] = useState("");
+  const [deleting, setDeleting] = useState(null);
 
   const load = async () => {
     setErr("");
@@ -75,7 +76,7 @@ export default function MemoryList({ view }) {
         include_invalid: includeInvalid ? "true" : "",
         limit: 200,
       });
-      setMems(list.filter((m) => !q || m.text.toLowerCase().includes(q.toLowerCase())));
+      setMems(list);
     } catch (e) {
       setErr(e.message);
     }
@@ -83,14 +84,31 @@ export default function MemoryList({ view }) {
 
   useEffect(() => { load(); }, [scope, includeInvalid]);
 
-  const doDelete = (mem) => {
-    const hard = confirm(`软删除（保留审计）选“确定”，彻底删除选“取消”后输入。\n\n${mem.text}\n\n确定=软删除`);
-    if (hard) {
-      const t = prompt("输入 DELETE 彻底删除（不可恢复）：");
-      if (t !== "DELETE") return;
-      wrap(() => api.remove(mem.id, true))().then(() => { notify("已彻底删除"); load(); });
-    } else {
-      wrap(() => api.remove(mem.id, false))().then(() => { notify("已软删除（审计保留）"); load(); });
+  // 文本过滤在渲染时做：输入即时生效，也不逐键重发请求
+  const shown = (mems || []).filter(
+    (m) => !q || m.text.toLowerCase().includes(q.toLowerCase()));
+
+  const softDelete = async (mem) => {
+    try {
+      await api.remove(mem.id, false);
+      notify("已软删除（审计保留）");
+      setDeleting(null);
+      load();
+    } catch (e) {
+      notify(e.message, true);
+    }
+  };
+
+  const hardDelete = async (mem) => {
+    const t = prompt("输入 DELETE 彻底删除（不可恢复）：");
+    if (t !== "DELETE") return;
+    try {
+      await api.remove(mem.id, true);
+      notify("已彻底删除");
+      setDeleting(null);
+      load();
+    } catch (e) {
+      notify(e.message, true);
     }
   };
 
@@ -136,17 +154,35 @@ export default function MemoryList({ view }) {
           </div>
         ))}</>
       )}
-      {mems && mems.length === 0 && <div className="empty">没有匹配的记忆</div>}
+      {mems && shown.length === 0 && <div className="empty">没有匹配的记忆</div>}
       {mems &&
-        mems.map((m) => (
+        shown.map((m) => (
           <MemoryCard
             key={m.id}
             mem={m}
             onDetail={setDetailId}
             onEdit={(mem) => { setEditing(mem); setEditText(mem.text); }}
-            onDelete={doDelete}
+            onDelete={setDeleting}
           />
         ))}
+
+      {deleting && (
+        <>
+          <div className="mask" onClick={() => setDeleting(null)} />
+          <div className="modal">
+            <h2>删除记忆</h2>
+            <div className="text" style={{ fontSize: 15 }}>{deleting.text}</div>
+            <div className="row" style={{ marginTop: 14 }}>
+              <button className="btn" onClick={() => softDelete(deleting)}>软删除（保留审计）</button>
+              <button className="btn del" onClick={() => hardDelete(deleting)}>彻底删除…</button>
+              <button className="btn ghost" onClick={() => setDeleting(null)}>取消</button>
+            </div>
+            <div className="muted" style={{ marginTop: 10 }}>
+              软删除后可在「含失效/被取代」中查看；彻底删除需再输入 DELETE 确认，不可恢复。
+            </div>
+          </div>
+        </>
+      )}
 
       {editing && (
         <>
