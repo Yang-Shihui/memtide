@@ -107,8 +107,12 @@ def _data_url_parts(url: str) -> Tuple[str, bytes]:
 
 def _guard_url(url: str) -> None:
     """Block SSRF: server-side fetch must never reach loopback/link-local/
-    private networks or cloud metadata endpoints."""
+    private networks or cloud metadata endpoints. Covers non-canonical IPv4
+    literals (``127.1``, ``2130706433``, ``0x7f.0.0.1``) that
+    ``ipaddress.ip_address`` rejects but libc still routes to loopback, and
+    DNS names that resolve into a protected range."""
     import ipaddress
+    import socket
     from urllib.parse import urlparse
 
     host = (urlparse(url).hostname or "").lower().rstrip(".")
@@ -116,13 +120,35 @@ def _guard_url(url: str) -> None:
         raise ValueError(f"media host blocked: {host}")
     if host.endswith(".local") or host.endswith(".internal"):
         raise ValueError(f"media host blocked: {host}")
+
+    def _check(ip) -> None:
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            raise ValueError(f"media IP blocked: {host}")
+
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
-        return  # DNS name: literal-IP private ranges already covered below
-    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved \
-            or ip.is_multicast or ip.is_unspecified:
-        raise ValueError(f"media IP blocked: {host}")
+        ip = None
+    if ip is not None:
+        _check(ip)
+        return
+    # not a canonical literal: libc may still parse it as one (short/decimal/
+    # hex IPv4 forms) — canonicalize through inet_aton before allowing it
+    try:
+        packed = socket.inet_aton(host)
+    except (OSError, TypeError):
+        packed = None
+    if packed is not None:
+        _check(ipaddress.ip_address(packed))
+        return
+    # DNS name: refuse if any resolved address falls in a protected range
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as e:
+        raise ValueError(f"media host unresolvable: {host}") from e
+    for info in infos:
+        _check(ipaddress.ip_address(info[4][0]))
 
 
 def _fetch_url(url: str, cap: int) -> Tuple[str, bytes]:

@@ -165,11 +165,19 @@ class TestWritePipeline(unittest.TestCase):
         for bad in ("http://localhost:6333/collections",
                     "http://127.0.0.1:5432/x",
                     "http://169.254.169.254/latest/meta-data/",
-                    "http://10.0.0.5/secret"):
+                    "http://10.0.0.5/secret",
+                    # non-canonical IPv4 literals libc routes to loopback but
+                    # ipaddress.ip_address cannot parse (regression: the old
+                    # guard treated the parse failure as "DNS name, allowed")
+                    "http://127.1:6333/collections",
+                    "http://2130706433/",
+                    "http://0x7f.0.0.1:6333/",
+                    "http://127.0.1/x"):
             with self.assertRaises(ValueError, msg=bad):
                 multimodal._guard_url(bad)
-        # public hosts pass the guard (no fetch performed here)
-        multimodal._guard_url("https://example.com/photo.jpg")
+        # public hosts pass the guard (no fetch performed here; a literal
+        # keeps this hermetic — no DNS)
+        multimodal._guard_url("https://93.184.216.34/photo.jpg")
 
     def test_manual_add_no_infer(self):
         res = self.eng.add("记住：部署密钥放在 1password 的 infra 库里", infer=False)
@@ -447,6 +455,29 @@ class TestBackgroundConsolidation(unittest.TestCase):
 
 class TestBugfixRegression(unittest.TestCase):
     """Regression tests for the 2026-08-30 full-sweep bug audit."""
+
+    def test_llm_delete_op_removes_index_point(self):
+        """Regression: a consolidation DELETE decision soft-deleted the PG row
+        but left the Qdrant point searchable — stale points permanently
+        occupy semantic_topk candidate slots. Same contract as engine.delete."""
+        eng = fresh_engine(gate_enabled=False)
+        r = eng.add("我叫李雷，住在杭州，喜欢喝美式咖啡", user_id="delvec", infer=False)
+        mid = r.added[0]
+        before = eng.vector_store.count()
+
+        # DELETE + a NOOP so the fact is consumed and no replacement is added
+        from memtide.types import AddResult, ExtractedFact
+
+        result = AddResult()
+        eng._apply_fact(ExtractedFact(text="占位事实", entities=[]), {}, result,
+                        [{"op": "DELETE", "id": mid},
+                         {"op": "NOOP", "id": "nonexistent"}],
+                        [], "delvec", None, None, None, [])
+        self.assertEqual(result.deleted, [mid])
+        self.assertEqual(eng.vector_store.count(), before - 1,
+                         "DELETE op must remove the index point")
+        self.assertEqual(eng.search("李雷住在哪", user_id="delvec"), [])
+        eng.close()
 
     def test_reset_wipes_everything(self):
         eng = fresh_engine()

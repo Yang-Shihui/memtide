@@ -341,6 +341,11 @@ class MemoryEngine:
                 handled_ids.add(mid)
             elif op == "DELETE":
                 self.store.soft_delete(mid)
+                # same contract as delete(): soft-deleted rows are hidden by
+                # the index-removal, not by the relational filter on the
+                # search path — the stale vector would still occupy a
+                # semantic_topk candidate slot until a manual rebuild
+                self.vector_store.delete(mid)
                 result.deleted.append(mid)
                 handled_ids.add(mid)
 
