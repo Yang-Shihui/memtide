@@ -7,7 +7,8 @@
 
 ```bash
 # 方式一：pip 安装（含 UI 静态资源；psycopg 是唯一运行时依赖）
-pip install .
+pip install memtide        # PyPI 包
+# 或源码安装：pip install .
 source .env                 # MEMTIDE_PG_DSN + LLM/embedding keys
 python -c "from memtide import MemoryEngine; MemoryEngine(); print('ok')"
 

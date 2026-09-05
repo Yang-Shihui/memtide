@@ -4,6 +4,7 @@
 # Memtide
 
 [![CI](https://github.com/Yang-Shihui/memtide/actions/workflows/ci.yml/badge.svg)](https://github.com/Yang-Shihui/memtide/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/memtide)](https://pypi.org/project/memtide/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 
@@ -116,6 +117,9 @@ cp .env.example .env   # 填入 LLM / DASHSCOPE key
 docker compose up -d --build
 curl localhost:8300/stats   # 返回真实 LLM / embedding / PostgreSQL / Qdrant 名称
 ```
+
+也可以不跑 Docker：`pip install memtide`（PyPI 包，或源码 `pip install .`），
+配置好 `MEMTIDE_PG_DSN` / `MEMTIDE_QDRANT_URL` 与 LLM key 后 `python -m memtide serve`。
 
 栈组成：`paradedb/paradedb:pg16`（PostgreSQL 16 + pg_search BM25 全文检索）、`qdrant`（向量 ANN 索引，
 embedding 模型变更时自动重建集合）、`memtide`（REST 服务）。数据分别在
